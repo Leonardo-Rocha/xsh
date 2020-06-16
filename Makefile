@@ -13,6 +13,7 @@ RC = ./src
 #-Og:			Optmize and enable debug  
 CCOPTS = -Wall -Og 
 NCURSES = -lncurses
+READLINE = -lreadline
 
 # Makefile targets
 
@@ -22,7 +23,7 @@ dir:
 	mkdir -p $(BU)
 
 ysh: $(RC)/ysh.c
-	$(CC) $(CCOPTS) -o $(BU)/$@ $< $(NCURSES)
+	$(CC) $(CCOPTS) -o $(BU)/$@ $< $(NCURSES) $(READLINE)
 
 # Run my_top
 run: $(BU)/ysh
