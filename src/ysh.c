@@ -102,6 +102,51 @@ int read_input(char *str)
 		return 1;
 }
 
+// TODO: Add parse run
+void run_foreground(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
+{
+	char* file = input_sequence[0];
+	pid_t pid = fork();
+	if(pid = 0)
+		return;
+	else if(pid = -1)
+		// TODO: FORK ERROR HANDLING
+		return;
+	if(exec_input != NULL)
+		freopen(exec_input, "r", stdin);
+	if(exec_output != NULL)
+		freopen(exec_output, "w", stdout);
+	if(exec_error != NULL)
+		freopen(exec_error, "w", stderr);
+	execvp(file, input_sequence);
+}
+
+void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
+{
+	char* file = input_sequence[0];
+	pid_t pid = fork();
+	if(pid = 0)
+		return;
+	else if(pid = -1)
+		// TODO: FORK ERROR HANDLING
+		return;
+	// stdout and stderr redirection
+	if(exec_input != NULL)
+		freopen(exec_input, "r", stdin);
+	else
+		freopen(BACKGROUND_IN, "r", stdin);
+	if(exec_output != NULL)	
+		freopen(exec_output, "w", stdout);
+	else
+		freopen(BACKGROUND_OUT, "r", stdout);
+	if(exec_error != NULL)	
+		reopen(exec_error, "w", stderr);
+	else
+		freopen(BACKGROUND_ERROR, "r", stderr);
+	execvp(file, input_sequence);
+}
+
+
 void destroy_shell()
 {
 	// dumps the current history to the file ~/.history
