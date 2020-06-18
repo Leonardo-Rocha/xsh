@@ -18,7 +18,7 @@ int main()
 		ch = getch();
 		// buffer verification for arrow keys and signals
 		// TODO: fix keys not working
-		while (ch >= 402)
+		while (ch >= 402 || ch == '\n')
 		{
 			switch (ch)
 			{
@@ -32,6 +32,10 @@ int main()
 				if (history_entry != NULL)
 					addstr(history_entry->line);
 				break;
+			case '\n':
+				print_usr_dir();
+				printw("\n");
+				print_usr_dir();
 			default:
 				break;
 			}
@@ -130,7 +134,7 @@ int read_input(char *input_string, char first_char)
 int is_valid_char(char first_char)
 {
 	return (first_char >= 'a' && first_char <= 'z') || (first_char >= 'A' && first_char <= 'Z') ||
-				 (first_char == '$') || (first_char == '_');
+				 (first_char == '$') || (first_char == '_') || (first_char == '.');
 }
 
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped)
@@ -362,12 +366,15 @@ void exec_system_command(char **parsed_args)
 				printw("ysh: command not found: %s\n", parsed_args[0]);
 			else
 				printw("ysh: Failed to exec command: %s: ", strerror(errno));
+			refresh();
+			exit(0);
 		}
 	}
 	else
 	{
 		// waiting for child to terminate
 		wait(NULL);
+		fflush(stdout);
 	}
 
 	return;
