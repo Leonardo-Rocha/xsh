@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <readline/history.h>
+#include <errno.h>
 
 #define MAX_COMMANDS 50
 #define MAX_COMMAND_LENGTH 1000
@@ -40,9 +41,13 @@ typedef enum
 
 char error_buffer[BUFFER_SIZE];
 
+extern int errno;
+
 char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
 
 FILE *output_redirection_file = NULL;
+
+int exit_flag = 0;
 
 /* Initialize ncurses with some specific options and tries to read history from ~/.history */
 void init_shell();
@@ -51,7 +56,7 @@ void init_shell();
 void print_usr_dir();
 
 /* Returns 0 if there's a non-null input, 1 otherwise. */
-int read_input(char *str);
+int read_input(char *input_string, char first_char);
 
 /* Returns the command_type enum. */
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped);
@@ -65,7 +70,7 @@ int parse_pipe(char *input_string, char **input_string_piped);
 /* Parses the whitespaces in the input_string. Assigning the result to the parsed list of strings. */
 void parse_whitespaces(char *input_string, char **parsed);
 
-/* Returns 1 on sucess, 0 otherwise. */
+/* Returns 0 on success, -1 otherwise. */
 command_type handle_builtin_commands(char **parsed_args);
 
 /* 
@@ -80,14 +85,25 @@ builtin_command match_builtin_command(char *input);
  */
 int change_dir(char *path);
 
+void _echo(char **message);
+
 /* Prints the shell builtin commands and its details */
 void print_help();
+
+/* Prints the last 50 commands entered. */
+void print_commands_history();
 
 // void run_foreground(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 
-/* End ncurses window and dump history to ~/.history */
+/* Ends ncurses window and dump history to ~/.history */
 void destroy_shell();
+
+/* 
+ * Calls fopen and handle erros.
+ * Returns 0 if the file was opened succesfully and -1 on error, also printing to stderr. 
+ */
+int handle_file_open(FILE **file_stream, const char *mode, const char *file_name);
 
 #endif
