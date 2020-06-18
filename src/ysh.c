@@ -14,6 +14,7 @@ int main()
 	{
 		print_usr_dir();
 
+		// TODO: can't erase first character with backspace
 		ch = getch();
 		// buffer verification for arrow keys and signals
 		// TODO: fix keys not working
@@ -36,23 +37,23 @@ int main()
 			}
 			ch = getch();
 		}
+
 		if (read_input(input_string, ch))
 			continue;
 
-		exec_flag = process_input_string(input_string,
-																		 parsed_args, parsed_args_piped);
+		exec_flag = process_input_string(input_string, parsed_args, parsed_args_piped);
 
-		// switch (exec_flag)
-		// {
-		// case SIMPLE:
-		// 	execArgs(parsed_args);
-		// 	break;
-		// case PIPE:
-		// 	execArgsPiped(parsed_args, parsed_args_piped);
-		// 	break;
-		// default:
-		// 	break;
-		// }
+		switch (exec_flag)
+		{
+		case SIMPLE:
+			exec_system_command(parsed_args);
+			break;
+		case PIPE:
+			// exec_args_piped(parsed_args, parsed_args_piped);
+			break;
+		default:
+			break;
+		}
 
 		if (exit_flag)
 			break;
@@ -108,7 +109,7 @@ void print_usr_dir()
 int read_input(char *input_string, char first_char)
 {
 	char buf[MAX_COMMAND_LENGTH];
-	if (first_char > 'a' && first_char < 'z')
+	if (is_valid_char(first_char))
 	{
 		buf[0] = first_char;
 		getstr(buf + 1);
@@ -116,19 +117,25 @@ int read_input(char *input_string, char first_char)
 	else
 		getstr(buf);
 
-	if (strlen(buf) > 1)
+	if (strlen(buf) > 0)
 	{
 		add_history(buf);
 		strcpy(input_string, buf);
 		return 0;
 	}
 	else
-		return 1;
+		return -1;
+}
+
+int is_valid_char(char first_char)
+{
+	return (first_char >= 'a' && first_char <= 'z') || (first_char >= 'A' && first_char <= 'Z') ||
+				 (first_char == '$') || (first_char == '_');
 }
 
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped)
 {
-	char *input_string_piped[2];
+	char *input_string_piped[MAX_PIPED_PROGRAMS];
 	int piped = 0;
 
 	piped = parse_pipe(input_string, input_string_piped);
@@ -142,14 +149,14 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 		parse_whitespaces(input_string, parsed_args);
 
 	if (handle_builtin_commands(parsed_args) == 0)
-		return NO_COMMAND_OR_BUILTIN;
+		return BUILTIN;
 	else
 		return SIMPLE + piped;
 }
 
 int parse_pipe(char *input_string, char **input_string_piped)
 {
-	for (int i = 0; i < 2; i++)
+	for (int i = 0; i < MAX_PIPED_PROGRAMS; i++)
 	{
 		input_string_piped[i] = strsep(&input_string, "|");
 		if (input_string_piped[i] == NULL)
@@ -211,15 +218,15 @@ command_type handle_builtin_commands(char **parsed_args)
 	case SET:
 		break;
 	default:
-		printw("ysh: command not found: %s\n", parsed_args[0]);
-		ret = -1;
+		// it must check if it's a system co
+		ret = SIMPLE;
+		break;
 	}
 
-	if (errno != 0 && ret == -1)
+	if (ret == -1)
 	{
 		printw("%s: %s: %s\n", parsed_args[0], strerror(errno), parsed_args[1]);
-		// TODO: is this really necessary?
-		errno = 0;
+		ret = 0;
 	}
 
 	return ret;
@@ -337,6 +344,35 @@ void print_commands_history()
 // 	execvp(file, input_sequence);
 // }
 
+void exec_system_command(char **parsed_args)
+{
+	// Forking a child
+	pid_t pid = fork();
+
+	if (pid == -1)
+	{
+		printw("\nysh: Failed to fork: %s\n", strerror(errno));
+		return;
+	}
+	else if (pid == 0)
+	{
+		if (execvp(parsed_args[0], parsed_args) < 0)
+		{
+			if (errno = ENOENT)
+				printw("ysh: command not found: %s\n", parsed_args[0]);
+			else
+				printw("ysh: Failed to exec command: %s: ", strerror(errno));
+		}
+	}
+	else
+	{
+		// waiting for child to terminate
+		wait(NULL);
+	}
+
+	return;
+}
+
 void destroy_shell()
 {
 	// dumps the current history to the file ~/.history
@@ -352,7 +388,7 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 		if (*file_stream == NULL)
 		{
 			snprintf(error_buffer, BUFFER_SIZE, "Could not open file \"%s\"", file_name);
-			perror(error_buffer);
+			// perror(error_buffer);
 			return -1;
 		}
 	}

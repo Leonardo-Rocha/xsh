@@ -13,12 +13,13 @@
 
 #define MAX_COMMANDS 50
 #define MAX_COMMAND_LENGTH 1000
+#define MAX_PIPED_PROGRAMS 2
 
 #define BUFFER_SIZE 200
 
 typedef enum
 {
-  NO_COMMAND_OR_BUILTIN,
+  BUILTIN,
   SIMPLE,
   PIPE
 } command_type;
@@ -58,6 +59,9 @@ void print_usr_dir();
 /* Returns 0 if there's a non-null input, 1 otherwise. */
 int read_input(char *input_string, char first_char);
 
+/* Check if the char is valid first char for a command name. [_$ a-z A-Z] */
+int is_valid_char(char first_char);
+
 /* Returns the command_type enum. */
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped);
 
@@ -81,7 +85,7 @@ builtin_command match_builtin_command(char *input);
 
 /* 
  * Changes the working directory and PWD environment variable. 
- * Returns zero on sucess and -1 on failure. 
+ * Returns zero on sucess, -1 on error and errno is set to indicate the error. 
  */
 int change_dir(char *path);
 
@@ -97,11 +101,14 @@ void print_commands_history();
 
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 
+/* Returns 0 on success, -1 on error and errno is set to indicate the error. */
+void exec_system_command(char **parsed_args);
+
 /* Ends ncurses window and dump history to ~/.history */
 void destroy_shell();
 
 /* 
- * Calls fopen and handle erros.
+ * Calls fopen and handle errors.
  * Returns 0 if the file was opened succesfully and -1 on error, also printing to stderr. 
  */
 int handle_file_open(FILE **file_stream, const char *mode, const char *file_name);
