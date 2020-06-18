@@ -41,6 +41,14 @@ int main()
 		refresh();
 	}
 
+	// LOOP THROUGH COMMANDS LIST
+	// for(char **command = commands_list; *command != NULL; command++)
+  // {
+  //   for(char *c = *command; *c != '\0'; c++)
+  //     printf("%c", *c);
+  //   printf("\n");
+  // }
+
 	destroy_shell();
 
 	return 0;
@@ -123,7 +131,7 @@ void run_foreground(const char* input_sequence[], char* exec_input, char* exec_o
 
 void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
 {
-	char* file = input_sequence[0];
+	char* file = (char *) input_sequence[0];
 	pid_t pid = fork();
 	if(pid = 0)
 		return;
@@ -145,7 +153,6 @@ void run_background(const char* input_sequence[], char* exec_input, char* exec_o
 		freopen(BACKGROUND_ERROR, "r", stderr);
 	execvp(file, input_sequence);
 }
-
 
 void destroy_shell()
 {
