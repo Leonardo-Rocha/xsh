@@ -57,7 +57,7 @@ void init_shell();
 void print_usr_dir();
 
 /* Returns 0 if there's a non-null input, 1 otherwise. */
-int read_input(char *input_string, char first_char);
+int read_input(char *input_string);
 
 /* Check if the char is valid first char for a command name. [_$ a-z A-Z] */
 int is_valid_char(char first_char);

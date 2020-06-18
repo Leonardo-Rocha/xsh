@@ -5,7 +5,7 @@ int main()
 	char input_string[MAX_COMMAND_LENGTH] = {0}, *parsed_args[MAX_COMMANDS];
 	char *parsed_args_piped[MAX_COMMANDS];
 	command_type exec_flag = 0;
-	int ch;
+	int ch, y, x;
 	HIST_ENTRY *history_entry;
 
 	init_shell(); /* Start curses mode 		  */
@@ -42,7 +42,11 @@ int main()
 			ch = getch();
 		}
 
-		if (read_input(input_string, ch))
+		ungetch(ch);
+		getyx(stdscr, y, x);
+		move(y, --x);
+
+		if (read_input(input_string))
 			continue;
 
 		exec_flag = process_input_string(input_string, parsed_args, parsed_args_piped);
@@ -74,7 +78,6 @@ void init_shell()
 {
 	initscr();							// Start curses mode
 	raw();									// Line buffering disabled
-	halfdelay(20);					// When we do getch(), wait for 2 seconds before return ERR value
 	keypad(stdscr, TRUE);		// enables keypad to use the arrow keys to scroll on the process list
 	scrollok(stdscr, TRUE); // enables scroll
 	idlok(stdscr, TRUE);
@@ -110,16 +113,11 @@ void print_usr_dir()
 	refresh();
 }
 
-int read_input(char *input_string, char first_char)
+int read_input(char *input_string)
 {
 	char buf[MAX_COMMAND_LENGTH];
-	if (is_valid_char(first_char))
-	{
-		buf[0] = first_char;
-		getstr(buf + 1);
-	}
-	else
-		getstr(buf);
+	// TODO: verify if the input is well formed
+	getstr(buf);
 
 	if (strlen(buf) > 0)
 	{
