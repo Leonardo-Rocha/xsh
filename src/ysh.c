@@ -7,6 +7,7 @@ int main()
 	command_type exec_flag = 0;
 	int ch, y, x;
 	HIST_ENTRY *history_entry;
+	io_stream no_stream = {NULL, NULL, NULL};
 
 	init_shell(); /* Start curses mode 		  */
 
@@ -54,10 +55,10 @@ int main()
 		switch (exec_flag)
 		{
 		case SIMPLE:
-			exec_system_command(parsed_args);
+			exec_system_command(parsed_args, no_stream);
 			break;
 		case PIPE:
-			// exec_args_piped(parsed_args, parsed_args_piped);
+			exec_system_command_piped(parsed_args, parsed_args_piped);
 			break;
 		default:
 			break;
@@ -327,46 +328,36 @@ void print_commands_history()
 // 	execvp(file, input_sequence);
 // }
 
-// // TODO: Add parse run
-// void run_foreground(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
+// void parse_redirects(char *input_string, char **exec_file, io_stream file_streams)
 // {
-// 	char* file = input_sequence[0];
-// 	pid_t pid = fork();
-// 	if(pid = 0)
-// 		return;
-// 	else if(pid = -1)
-// 		// TODO: FORK ERROR HANDLING
-// 		return;
-// 	if(exec_input != NULL)
-// 		freopen(exec_input, "r", stdin);
-// 	if(exec_output != NULL)
-// 		freopen(exec_output, "w", stdout);
-// 	if(exec_error != NULL)
-// 		freopen(exec_error, "w", stderr);
-// 	execvp(file, input_sequence);
+// 	exec_file = strsep(&input_string, "<");
+
+// 	if (exec_file == NULL)
+// 		break;
+// 	if (strlen(exec_file) == 0)
+// 		i--;
 // }
 
-void exec_system_command(char **parsed_args)
+int handle_redirect(char **parsed_args, io_stream file_stream)
+{
+	return 0;
+}
+
+void exec_system_command(char **parsed_args, io_stream file_stream)
 {
 	// Forking a child
 	pid_t pid = fork();
 
 	if (pid == -1)
 	{
-		printw("\nysh: Failed to fork: %s\n", strerror(errno));
+		printw("ysh: Failed to fork: %s\n", strerror(errno));
 		return;
 	}
 	else if (pid == 0)
 	{
+		//handle_redirect(parsed_args, file_stream);
 		if (execvp(parsed_args[0], parsed_args) < 0)
-		{
-			if (errno = ENOENT)
-				printw("ysh: command not found: %s\n", parsed_args[0]);
-			else
-				printw("ysh: Failed to exec command: %s: ", strerror(errno));
-			refresh();
-			exit(0);
-		}
+			handle_exec_error(parsed_args[0]);
 	}
 	else
 	{
@@ -376,6 +367,73 @@ void exec_system_command(char **parsed_args)
 	}
 
 	return;
+}
+
+void handle_exec_error(char *command)
+{
+	if (errno = ENOENT)
+		printw("ysh: command not found: %s\n", command);
+	else
+		printw("ysh: Failed to exec command: %s: ", strerror(errno));
+	refresh();
+	exit(0);
+}
+
+// TODO: complete this -> error handling
+void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
+{
+	int pipe_fd[2];
+	pid_t p1, p2;
+
+	if (pipe(pipe_fd) < 0)
+	{
+		printw("ysh: Pipe could not be initialized: %s", strerror(errno));
+		return;
+	}
+	p1 = fork();
+	if (p1 < 0)
+	{
+		printw("ysh: Failed to fork: %s\n", strerror(errno));
+		return;
+	}
+
+	if (p1 == 0)
+	{
+		// It only needs to write at the write end
+		close(pipe_fd[0]);
+		dup2(pipe_fd[1], STDOUT_FILENO);
+		close(pipe_fd[1]);
+
+		if (execvp(parsed_args[0], parsed_args) < 0)
+			handle_exec_error(parsed_args[0]);
+	}
+	else
+	{
+		// Parent executing
+		p2 = fork();
+
+		if (p2 < 0)
+		{
+			printw("ysh: Failed to fork: %s\n", strerror(errno));
+			return;
+		}
+
+		// It only needs to read at the read end
+		if (p2 == 0)
+		{
+			close(pipe_fd[1]);
+			dup2(pipe_fd[0], STDIN_FILENO);
+			close(pipe_fd[0]);
+			if (execvp(parsed_args_piped[0], parsed_args_piped) < 0)
+				handle_exec_error(parsed_args_piped[0]);
+		}
+		else
+		{
+			// parent executing, waiting for two children
+			wait(NULL);
+			wait(NULL);
+		}
+	}
 }
 
 void destroy_shell()

@@ -24,6 +24,13 @@ typedef enum
   PIPE
 } command_type;
 
+typedef struct
+{
+  char *input_stream;
+  char *output_stream;
+  char *error_stream;
+} io_stream;
+
 typedef enum
 {
   COMMAND_NOT_FOUND = -1,
@@ -102,7 +109,11 @@ void print_commands_history();
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 
 /* Returns 0 on success, -1 on error and errno is set to indicate the error. */
-void exec_system_command(char **parsed_args);
+void exec_system_command(char **parsed_args, io_stream file_stream);
+
+void handle_exec_error(char *command);
+
+void exec_system_command_piped(char **parsed_args, char **parsed_args_piped);
 
 /* Ends ncurses window and dump history to ~/.history */
 void destroy_shell();
