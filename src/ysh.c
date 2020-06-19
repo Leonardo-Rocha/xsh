@@ -15,23 +15,29 @@ int main()
 	{
 		print_usr_dir();
 
-		// TODO: can't erase first character with backspace
 		ch = getch();
 		// buffer verification for arrow keys and signals
 		// TODO: fix keys not working
-		while (ch >= 402 || ch == '\n')
+		while (ch == KEY_DOWN || ch == KEY_UP || ch == '\n')
 		{
+			history_set_pos(history_length - 1);
 			switch (ch)
 			{
 			case KEY_UP:
 				history_entry = previous_history();
 				if (history_entry != NULL)
 					addstr(history_entry->line);
+				else
+					addstr("");
+				refresh();
 				break;
 			case KEY_DOWN:
 				history_entry = next_history();
 				if (history_entry != NULL)
 					addstr(history_entry->line);
+				else
+					addstr("");
+				refresh();
 				break;
 			case '\n':
 				print_usr_dir();
@@ -42,6 +48,7 @@ int main()
 			}
 			ch = getch();
 		}
+		refresh();
 
 		ungetch(ch);
 		getyx(stdscr, y, x);
@@ -82,6 +89,7 @@ void init_shell()
 	keypad(stdscr, TRUE);		// enables keypad to use the arrow keys to scroll on the process list
 	scrollok(stdscr, TRUE); // enables scroll
 	idlok(stdscr, TRUE);
+	using_history();
 	// read if there's a history in ~/.history
 	read_history(NULL);
 }
@@ -297,16 +305,12 @@ void print_help()
 void print_commands_history()
 {
 	// TODO: print history to redirection
-	HIST_ENTRY *history_entry;
-	// TODO: set pos to last position before printing
-	for (int i = 0; i < 50; i++)
-	{
-		history_entry = next_history();
-		if (history_entry != NULL)
-			printw("%s\n", history_entry->line);
-		else
-			break;
-	}
+	register HIST_ENTRY **history;
+	history = history_list();
+	int i = history_length > MAX_COMMANDS_HISTORY ? history_length - (MAX_COMMANDS_HISTORY + 1) : 0;
+	if (history != NULL)
+		for (; history[i]; i++)
+			printw("%s\n", history[i]->line);
 }
 
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
@@ -339,7 +343,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	// ./media 2 3 >out < message 2> err
 	// parsed_args = {"./media>, "out<in", "2>", "err"}
 	int argc = 0, new_arg_flag = 0;
-	char *string2separate, separator_ret = NULL;
+	char *string2separate, *separator_ret = NULL;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
 		string2separate = malloc(strlen(*arg));
@@ -387,7 +391,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 		{
 			parsed_redirects[argc] = string2separate;
 			if (new_arg_flag)
-				argc++
+				argc++;
 		}
 		// free(string2separate);
 		argc++;
