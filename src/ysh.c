@@ -174,15 +174,21 @@ int parse_pipe(char *input_string, char **input_string_piped)
 
 void parse_whitespaces(char *input_string, char **parsed)
 {
-	for (int i = 0; i < MAX_COMMANDS; i++)
+	int i = 0;
+
+	for (i = 0; i < MAX_COMMANDS - 1; i++)
 	{
 		parsed[i] = strsep(&input_string, " ");
 
 		if (parsed[i] == NULL)
+		{
+			++i;
 			break;
+		}
 		if (strlen(parsed[i]) == 0)
 			i--;
 	}
+	parsed[i] = NULL;
 }
 
 command_type handle_builtin_commands(char **parsed_args)
@@ -266,6 +272,7 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
+	// TODO: echo for redirection
 	for (char **string = message; *string != NULL; string++)
 	{
 		if (*string != NULL)
@@ -283,14 +290,13 @@ void print_help()
 												"run: \n"
 												"	builtin [-options] [args ...]\n"
 												"\nFor more info about each command run helpall\n";
-	if (output_redirection_file != NULL)
-		fprintf(output_redirection_file, "%s", print_string);
-	else
-		printw("%s", print_string);
+	printw("%s", print_string);
+	// TODO: print help to redirection
 }
 
 void print_commands_history()
 {
+	// TODO: print history to redirection
 	HIST_ENTRY *history_entry;
 	// TODO: set pos to last position before printing
 	for (int i = 0; i < 50; i++)
@@ -328,15 +334,65 @@ void print_commands_history()
 // 	execvp(file, input_sequence);
 // }
 
-// void parse_redirects(char *input_string, char **exec_file, io_stream file_streams)
-// {
-// 	exec_file = strsep(&input_string, "<");
+void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args)
+{
+	// ./media 2 3 >out < message 2> err
+	// parsed_args = {"./media>, "out<in", "2>", "err"}
+	int argc = 0, new_arg_flag = 0;
+	char *string2separate, separator_ret = NULL;
+	for (char **arg = parsed_args; *arg != NULL; arg++)
+	{
+		string2separate = malloc(strlen(*arg));
+		strcpy(string2separate, *arg);
+		// "./media>"
+		new_arg_flag = 0;
+		for (char *c = string2separate; *c != '\0'; c++)
+		{
+			switch (*c)
+			{
+			case '<':
+				separator_ret = strsep(&string2separate, "<");
+				break;
+			case '>':
+				// separator_ret = "./media" ; strinf2separate = ""
+				separator_ret = strsep(&string2separate, ">");
+				break;
+			case '2':
+				if (*(c + 1) == '>')
+					separator_ret = strsep(&string2separate, "2>");
+				break;
+			default:
+				separator_ret = NULL;
+				break;
+				// "in <out 2> "
+				// " 1   2   2
+			}
 
-// 	if (exec_file == NULL)
-// 		break;
-// 	if (strlen(exec_file) == 0)
-// 		i--;
-// }
+			if (separator_ret != NULL)
+			{
+				c = string2separate;
+				if (strlen(separator_ret) > 0)
+				{
+					parsed_redirects[argc] = separator_ret;
+					if (new_arg_flag)
+					{
+						argc++;
+					}
+					else
+						new_arg_flag = 1;
+				}
+			}
+		}
+		if (strlen(string2separate) > 0)
+		{
+			parsed_redirects[argc] = string2separate;
+			if (new_arg_flag)
+				argc++
+		}
+		// free(string2separate);
+		argc++;
+	}
+}
 
 int handle_redirect(char **parsed_args, io_stream file_stream)
 {

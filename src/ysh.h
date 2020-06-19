@@ -11,7 +11,7 @@
 #include <readline/history.h>
 #include <errno.h>
 
-#define MAX_COMMANDS 50
+#define MAX_COMMANDS 51
 #define MAX_COMMAND_LENGTH 1000
 #define MAX_PIPED_PROGRAMS 2
 
@@ -47,13 +47,20 @@ typedef enum
   SET
 } builtin_command;
 
+typedef enum
+{
+  STDIN,
+  STDOUT,
+  STDERR
+} redirections;
+
+io_stream redirection_file_stream;
+
 char error_buffer[BUFFER_SIZE];
 
 extern int errno;
 
 char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
-
-FILE *output_redirection_file = NULL;
 
 int exit_flag = 0;
 
