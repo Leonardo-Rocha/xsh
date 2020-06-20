@@ -99,18 +99,24 @@ void parse_whitespaces(char *input_string, char **parsed);
 command_type handle_builtin_commands(char **parsed_args);
 
 /* 
- * Searches in the builtin commands list. 
- * Returns the matching command enum. 
+ * Search in the builtin commands list. 
+ * Return the matching command enum. 
  */
 builtin_command match_builtin_command(char *input);
 
 /* 
- * Changes the working directory and PWD environment variable. 
- * Returns zero on sucess, -1 on error and errno is set to indicate the error. 
+ * Change the working directory and PWD environment variable. 
+ * Return zero on sucess, -1 on error and errno is set to indicate the error. 
  */
 int change_dir(char *path);
 
 void _echo(char **message);
+
+/* 
+ * Define or redefine an environment variable.
+ * config must be 'ENV_VAR'=[$APPEND_VAR]:'NEW_VALUE'
+ * where [$APPEND_VAR] can be any variable and is optional. */
+void export(char *config);
 
 /* Print the shell builtin commands and its details */
 void print_help();

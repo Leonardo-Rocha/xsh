@@ -232,6 +232,7 @@ command_type handle_builtin_commands(char **parsed_args)
 		exit_flag = 1;
 		break;
 	case EXPORT:
+		export(parsed_args[1]);
 		break;
 	case FG:
 		break;
@@ -303,6 +304,7 @@ void _echo(char **message)
 	// it's a env variable
 	if (message[0][0] == '$')
 	{
+		// +1 to skip '$'
 		char *env_variable = getenv(message[0] + 1);
 		if (output_file == NULL)
 			printw("%s\n", env_variable);
@@ -331,6 +333,60 @@ void _echo(char **message)
 
 	if (output_file != NULL)
 		fclose(output_file);
+}
+
+void export(char *config)
+{
+	char *env_variable, *append_env_variable, *append_env_variable_value;
+	char *aux_config_start, *aux_config;
+	int ret = 0;
+
+	if (config == NULL)
+	{
+		printw("Usage: export 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'\n");
+		return;
+	}
+	// TODO: solve echo bug when export MYPATH=$MYPATH:/home/leonardo/Downloads
+
+	// this must be done because strsep changes the aux_config pointer.
+	aux_config_start = aux_config = malloc(strlen(config));
+
+	strcpy(aux_config, config);
+
+	// aux_config now contains the new value
+	env_variable = strsep(&aux_config, "=");
+	if (getenv(env_variable) == NULL)
+		printw("export: environment variable '%s' doesn't exit\n", env_variable);
+
+	if (aux_config != NULL && aux_config[0] == '$')
+	{
+		append_env_variable = strsep(&aux_config, ":");
+		// + 1 to skip '$'
+		append_env_variable_value = getenv(append_env_variable + 1);
+		if (append_env_variable_value != NULL)
+		{
+			if (aux_config != NULL)
+			{
+				strcat(append_env_variable_value, ":");
+				strcat(append_env_variable_value, aux_config);
+			}
+			ret = setenv(env_variable, append_env_variable_value, 1);
+		}
+		else
+			printw("export: environment variable '%s' doesn't exit\n", (append_env_variable + 1));
+	}
+	else if (aux_config != NULL)
+		ret = setenv(env_variable, aux_config, 1);
+	else
+		printw("export: syntax error: missing '='\n");
+
+	if (ret == -1)
+	{
+		printw("export: setenv error: %s", strerror(errno));
+	}
+
+	if (aux_config_start != NULL)
+		free(aux_config_start);
 }
 
 void print_help()
