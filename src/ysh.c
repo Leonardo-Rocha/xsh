@@ -9,7 +9,7 @@ int main()
 	HIST_ENTRY *history_entry;
 	io_stream no_stream = {NULL, NULL, NULL};
 
-	init_shell(); /* Start curses mode 		  */
+	init_shell();
 
 	while (1)
 	{
@@ -92,6 +92,15 @@ void init_shell()
 	using_history();
 	// read if there's a history in ~/.history
 	read_history(NULL);
+	config_environment_variables();
+}
+
+void config_environment_variables()
+{
+	// MYPATH
+	char *env_path = getenv("PATH");
+	setenv("MYPATH", env_path, 1);
+	// TODO: MYPS1
 }
 
 // TODO: tint with some colors to make it more beautiful
@@ -104,9 +113,13 @@ void print_usr_dir()
 	char *home = getenv("HOME");
 	int home_length = strlen(home);
 
-	// TODO: proper error handling
 	if (cwd == NULL || hostname_ret != 0)
-		exit(1);
+	{
+		printw("ysh: failed to print user info: %s", strerror(errno));
+		printw("exiting...");
+		destroy_shell();
+		exit(EXIT_FAILURE);
+	}
 
 	printw("%s@%s:", username, hostname);
 
@@ -280,11 +293,24 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
-	// TODO: echo for redirection
 	for (char **string = message; *string != NULL; string++)
 	{
 		if (*string != NULL)
-			printw("%s ", *string);
+		{
+			if (redirection_file_stream.output_stream == NULL)
+				printw("%s ", *string);
+			else
+			{
+				FILE *output_file;
+				if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == 0)
+				{
+					fprintf(output_file, "%s ", *string);
+					fclose(output_file);
+				}
+				else
+					printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+			}
+		}
 		else
 			break;
 	}
@@ -298,19 +324,44 @@ void print_help()
 												"run: \n"
 												"	builtin [-options] [args ...]\n"
 												"\nFor more info about each command run helpall\n";
-	printw("%s", print_string);
-	// TODO: print help to redirection
+	if (redirection_file_stream.output_stream == NULL)
+		printw("%s", print_string);
+	else
+	{
+		FILE *output_file;
+		if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == 0)
+		{
+			fprintf(output_file, "%s", print_string);
+			fclose(output_file);
+		}
+		else
+			printw("help: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+	}
 }
 
 void print_commands_history()
 {
-	// TODO: print history to redirection
 	register HIST_ENTRY **history;
 	history = history_list();
+	FILE *output_file;
 	int i = history_length > MAX_COMMANDS_HISTORY ? history_length - (MAX_COMMANDS_HISTORY + 1) : 0;
+
+	if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+
 	if (history != NULL)
+	{
 		for (; history[i]; i++)
-			printw("%s\n", history[i]->line);
+		{
+			if (output_file == NULL)
+				printw("%s\n", history[i]->line);
+			else
+				fprintf(output_file, "%s\n", history[i]->line);
+		}
+	}
+
+	if (output_file != NULL)
+		fclose(output_file);
 }
 
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
@@ -416,7 +467,7 @@ void exec_system_command(char **parsed_args, io_stream file_stream)
 	else if (pid == 0)
 	{
 		//handle_redirect(parsed_args, file_stream);
-		if (execvp(parsed_args[0], parsed_args) < 0)
+		if (exec_mypath(parsed_args[0], parsed_args) < 0)
 			handle_exec_error(parsed_args[0]);
 	}
 	else
@@ -429,6 +480,26 @@ void exec_system_command(char **parsed_args, io_stream file_stream)
 	return;
 }
 
+int exec_mypath(const char *file, char *const argv[])
+{
+	char *mypath = getenv("MYPATH");
+	int ret = 0;
+	if (mypath)
+	{
+		char mypathenv[strlen(mypath) + sizeof("MYPATH=")];
+		sprintf(mypathenv, "MYPATH=%s", mypath);
+		char *envp[] = {mypathenv, NULL};
+		ret = execvpe(file, argv, envp);
+	}
+	else
+	{
+		printw("ysh: MYPATH env variable doesn't exist.\n");
+		ret = -1;
+	}
+
+	return ret;
+}
+
 void handle_exec_error(char *command)
 {
 	if (errno = ENOENT)
@@ -436,10 +507,9 @@ void handle_exec_error(char *command)
 	else
 		printw("ysh: Failed to exec command: %s: ", strerror(errno));
 	refresh();
-	exit(0);
+	exit(EXIT_FAILURE);
 }
 
-// TODO: complete this -> error handling
 void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 {
 	int pipe_fd[2];
@@ -464,7 +534,7 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 		dup2(pipe_fd[1], STDOUT_FILENO);
 		close(pipe_fd[1]);
 
-		if (execvp(parsed_args[0], parsed_args) < 0)
+		if (exec_mypath(parsed_args[0], parsed_args) < 0)
 			handle_exec_error(parsed_args[0]);
 	}
 	else
@@ -484,7 +554,7 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 			close(pipe_fd[1]);
 			dup2(pipe_fd[0], STDIN_FILENO);
 			close(pipe_fd[0]);
-			if (execvp(parsed_args_piped[0], parsed_args_piped) < 0)
+			if (exec_mypath(parsed_args_piped[0], parsed_args_piped) < 0)
 				handle_exec_error(parsed_args_piped[0]);
 		}
 		else
@@ -510,7 +580,7 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 		*file_stream = fopen(file_name, mode);
 		if (*file_stream == NULL)
 		{
-			snprintf(error_buffer, BUFFER_SIZE, "Could not open file \"%s\"", file_name);
+			// snprintf(error_buffer, BUFFER_SIZE, "Could not open file \"%s\"", file_name);
 			// perror(error_buffer);
 			return -1;
 		}
