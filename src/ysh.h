@@ -62,6 +62,8 @@ char error_buffer[BUFFER_SIZE];
 
 extern int errno;
 
+extern char **environ;
+
 char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
 
 int exit_flag = 0;
@@ -115,6 +117,9 @@ void print_help();
 
 /* Print the last 50 commands entered. */
 void print_commands_history();
+
+/* Print all environment variables. */
+void _set();
 
 // void run_foreground(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 

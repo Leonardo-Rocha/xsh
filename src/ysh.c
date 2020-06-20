@@ -246,6 +246,7 @@ command_type handle_builtin_commands(char **parsed_args)
 	case KILL:
 		break;
 	case SET:
+		_set();
 		break;
 	default:
 		// it must check if it's a system co
@@ -293,28 +294,43 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
-	for (char **string = message; *string != NULL; string++)
+	FILE *output_file = NULL;
+
+	if (redirection_file_stream.output_stream != NULL &&
+			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+		printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+
+	// it's a env variable
+	if (message[0][0] == '$')
 	{
-		if (*string != NULL)
+		char *env_variable = getenv(message[0] + 1);
+		if (output_file == NULL)
+			printw("%s\n", env_variable);
+		else
+			fprintf(output_file, "%s\n", env_variable);
+	}
+	else
+	{
+		// it's a string list
+		for (char **string = message; *string != NULL; string++)
 		{
-			if (redirection_file_stream.output_stream == NULL)
-				printw("%s ", *string);
+			if (*string != NULL)
+			{
+				if (output_file == NULL)
+					printw("%s ", *string);
+				else
+					fprintf(output_file, "%s ", *string);
+			}
 			else
 			{
-				FILE *output_file;
-				if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == 0)
-				{
-					fprintf(output_file, "%s ", *string);
-					fclose(output_file);
-				}
-				else
-					printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+				break;
 			}
 		}
-		else
-			break;
+		printw("\n");
 	}
-	printw("\n");
+
+	if (output_file != NULL)
+		fclose(output_file);
 }
 
 void print_help()
@@ -328,7 +344,7 @@ void print_help()
 		printw("%s", print_string);
 	else
 	{
-		FILE *output_file;
+		FILE *output_file = NULL;
 		if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == 0)
 		{
 			fprintf(output_file, "%s", print_string);
@@ -343,10 +359,11 @@ void print_commands_history()
 {
 	register HIST_ENTRY **history;
 	history = history_list();
-	FILE *output_file;
+	FILE *output_file = NULL;
 	int i = history_length > MAX_COMMANDS_HISTORY ? history_length - (MAX_COMMANDS_HISTORY + 1) : 0;
 
-	if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+	if (redirection_file_stream.output_stream != NULL &&
+			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
 		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
 
 	if (history != NULL)
@@ -358,6 +375,26 @@ void print_commands_history()
 			else
 				fprintf(output_file, "%s\n", history[i]->line);
 		}
+	}
+
+	if (output_file != NULL)
+		fclose(output_file);
+}
+
+void _set()
+{
+	FILE *output_file = NULL;
+
+	if (redirection_file_stream.output_stream != NULL &&
+			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+		printw("set: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+
+	for (char **variable = environ; *variable != NULL; variable++)
+	{
+		if (output_file == NULL)
+			printw("%s\n", *variable);
+		else
+			fprintf(output_file, "%s\n", *variable);
 	}
 
 	if (output_file != NULL)
