@@ -9,6 +9,8 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/sysmacros.h>
+#include <sys/stat.h>
 #include <readline/history.h>
 #include <errno.h>
 #include <time.h>
@@ -17,6 +19,7 @@
 #define MAX_COMMAND_LENGTH 1000
 #define MAX_PIPED_PROGRAMS 2
 #define MAX_COMMANDS_HISTORY 50
+#define MAX_REDIRECT_ARGS 30
 
 #define BUFFER_SIZE 200
 
@@ -57,7 +60,7 @@ typedef enum
   STDERR
 } redirections;
 
-io_stream redirection_file_stream;
+io_stream redirection_file_stream = {NULL};
 
 char error_buffer[BUFFER_SIZE];
 
@@ -65,22 +68,25 @@ extern int errno;
 
 extern char **environ;
 
+char *ysh_path;
+
 char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
 
 int exit_flag = 0;
 
 /* Initialize ncurses with some specific options and tries to read history from ~/.history */
-void init_shell();
+void init_shell(const char *_ysh_path);
 
 /* Config the variables MYPATH and MYPS1. */
-void config_environment_variables();
+void config_environment_variables(const char *_ysh_path);
 
 /* Print prompt setting using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
 void print_prompt_setting();
 
-void _print_prompt_setting();
+void _print_primary_prompt_string();
 
-char *parse_prompt_setting_special_characters(char *string);
+/* Parse and expand prompt string special characters. */
+char *parse_prompt_string_special_characters(char *string);
 
 /* Return 0 if there's a non-null input, 1 otherwise. */
 int read_input(char *input_string);
@@ -100,7 +106,12 @@ int parse_pipe(char *input_string, char **input_string_piped);
 /* Parse the whitespaces in the input_string, assigning the result to the parsed list of strings. */
 void parse_whitespaces(char *input_string, char **parsed);
 
-/* Return 0 on success, -1 otherwise. */
+/* Parse redirect symbols (<, >, 2>) in input_string, assigning the result to the parsed list of strings*/
+void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args);
+
+/* Separa */
+
+/* Return BUILTIN if it's a builtin command or SIMPLE if it's a system command. */
 command_type handle_builtin_commands(char **parsed_args);
 
 /* 
@@ -119,9 +130,9 @@ void _echo(char **message);
 
 /* 
  * Define or redefine an environment variable.
- * config must be 'ENV_VAR'=[$APPEND_VAR]:'NEW_VALUE'
+ * config must be 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'
  * where [$APPEND_VAR] can be any variable and is optional. */
-void export(char *config);
+void export(char **config);
 
 /* Print the shell builtin commands and its details */
 void print_help();

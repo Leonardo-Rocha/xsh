@@ -1,6 +1,6 @@
 #include "ysh.h"
 
-int main()
+int main(int argc, char const *argv[])
 {
 	char input_string[MAX_COMMAND_LENGTH] = {0}, *parsed_args[MAX_COMMANDS];
 	char *parsed_args_piped[MAX_COMMANDS];
@@ -9,11 +9,11 @@ int main()
 	HIST_ENTRY *history_entry;
 	io_stream no_stream = {NULL, NULL, NULL};
 
-	init_shell();
+	init_shell(argv[0]);
 
 	while (1)
 	{
-		print_prompt_setting();
+		_print_primary_prompt_string();
 
 		ch = getch();
 		// buffer verification for arrow keys and signals
@@ -40,9 +40,9 @@ int main()
 				refresh();
 				break;
 			case '\n':
-				print_prompt_setting();
+				_print_primary_prompt_string();
 				printw("\n");
-				print_prompt_setting();
+				_print_primary_prompt_string();
 			default:
 				break;
 			}
@@ -82,7 +82,7 @@ int main()
 	return 0;
 }
 
-void init_shell()
+void init_shell(const char *_ysh_path)
 {
 	initscr();							// Start curses mode
 	raw();									// Line buffering disabled
@@ -92,18 +92,32 @@ void init_shell()
 	using_history();
 	// read if there's a history in ~/.history
 	read_history(NULL);
-	config_environment_variables();
+	config_environment_variables(ysh_path);
 }
 
-void config_environment_variables()
+void config_environment_variables(const char *_ysh_path)
 {
-	// MYPATH
+	// $MYPATH
 	char *env_path = getenv("PATH");
 	setenv("MYPATH", env_path, 1);
-	// MYPS1
+	// $MYPS1
 	// char *default_myps1 = "\\u@\\h: \\W \\$";
 	char *default_myps1 = "\\D{%c}";
-	setenv("MYPS1", default_myps1, 1);
+	if (getenv("MYPS1") == NULL)
+		setenv("MYPS1", default_myps1, 1);
+	// $0 - shell path
+	// ysh_path = malloc(strlen(_ysh_path));
+	// strcpy(ysh_path, _ysh_path);
+	// // remove "./"
+	// strsep(&ysh_path, "./");
+	// char *_pwd = getenv("PWD");
+	// char *pwd = malloc(strlen(_pwd));
+	// strcpy(pwd, _pwd);
+	// // concat to get the shell absolute path
+	// strcat(pwd, ysh_path);
+	// // TODO: does this fuck with ysh_path?
+	// ysh_path = pwd;
+	// setenv("0", ysh_path, 1);
 }
 
 // TODO: tint with some colors to make it more beautiful
@@ -139,26 +153,33 @@ void print_prompt_setting()
 }
 
 // TODO: make this the real one when it's done
-void _print_prompt_setting()
+void _print_primary_prompt_string()
 {
-	char *prompt_setting = getenv("MYPS1");
+	char *_prompt_setting = getenv("MYPS1");
+	char *start_address, *prompt_setting = malloc(strlen(_prompt_setting));
 
-	for (char *c = prompt_setting; *c != '\0';)
+	start_address = prompt_setting;
+
+	strcpy(prompt_setting, _prompt_setting);
+
+	for (char *c = prompt_setting; *c != '\0'; c++)
 	{
 		if (*c != '\\')
-		{
 			printw("%c", *c);
-			c++;
-		}
 		else
-			c = parse_prompt_setting_special_characters(c);
+			c = parse_prompt_string_special_characters(c);
 	}
+
+	free(start_address);
 }
 
-char *parse_prompt_setting_special_characters(char *string)
+char *parse_prompt_string_special_characters(char *string)
 {
 	// TODO: complete cases
-	char buffer[80];
+	char *buffer = malloc(BUFFER_SIZE * sizeof(char));
+	char *buffer_start_address = buffer;
+	int ret;
+	struct stat *stat_buf = NULL;
 
 	time_t rawtime;
 	time(&rawtime);
@@ -166,37 +187,106 @@ char *parse_prompt_setting_special_characters(char *string)
 
 	switch (string[1])
 	{
+	// \a : an ASCII bell character (07)
 	case 'a':
 		printf("\a");
 		string++;
 		break;
+	// \d : the date in “Weekday Month Date” format (e.g., “Tue May 26”)
 	case 'd':
-		strftime(buffer, 80, "%a %b %d", timeinfo);
+		strftime(buffer, BUFFER_SIZE, "%a %b %d", timeinfo);
 		printw("%s", buffer);
 		string++;
 		break;
+	// \D{format} : the format is passed to strftime(3) and the result is inserted into the prompt string;
+	// an empty format results in a locale-specific time representation. The braces are required.
 	case 'D':
 		if (string[2] == '{')
 		{
 			string += 3;
-			strftime(buffer, 80, strsep(&string, "}"), timeinfo);
+			strftime(buffer, BUFFER_SIZE, strsep(&string, "}"), timeinfo);
 			printw("%s", buffer);
+			string--;
 		}
+		else
+			printw("\nysh: MYPS1 syntax error: '\\D{format}'");
+		break;
+	// \e : an ASCII escape character (027)
 	case 'e':
+		// TODO: what should we do here?
 		printw("\e");
+		string++;
+		break;
+	// \h : the hostname up to the first ‘.’
+	case 'h':
+		ret = gethostname(buffer, BUFFER_SIZE);
+		if (ret == 0)
+			printw("%s", strsep(&buffer, "."));
+		string++;
+		break;
+	// \H : the hostname
+	case 'H':
+		ret = gethostname(buffer, BUFFER_SIZE);
+		if (ret == 0)
+			printw("%s", buffer);
+		string++;
+		break;
+	// \j : the number of jobs currently managed by the shell
+	case 'j':
+		// TODO: add this when jobs are done.
+		break;
+	// \l : the basename of the shell'ss terminal device name
+	case 'l':
+		stat("/bin/bash", stat_buf);
+		if (stat_buf != NULL)
+			printf("%d", minor(stat_buf->st_dev));
+		string++;
+		break;
+	// \n : newline
+	case 'n':
+		printw("\n");
+		string++;
+		break;
+	// \r : carriage return
+	case 'r':
+		printw("\r");
+		string++;
+		break;
+	// \s : the name of the shell, the basename of $0 (the portion following the final slash)
+	case 's':
+		printw("ysh");
+		string++;
+		break;
+	// \t : the current time in 24-hour HH:MM:SS format
+	case 't':
+		strftime(buffer, BUFFER_SIZE, "%T", timeinfo);
+		printw("%s", buffer);
+		string++;
+		break;
+	// \T : the current time in 12-hour HH:MM:SS format
+	case 'T':
+		strftime(buffer, BUFFER_SIZE, "%r", timeinfo);
+		printw("%s", buffer);
+		string++;
+		break;
+	// \@ : the current time in 12-hour am/pm format
+	case '@':
+		strftime(buffer, BUFFER_SIZE, "%r", timeinfo);
+		printw("%s:%s", strsep(&buffer, ":"), strsep(&buffer, ":"));
 		string++;
 		break;
 	default:
 		break;
 	}
 
+	free(buffer_start_address);
 	return string;
 }
 
 int read_input(char *input_string)
 {
 	char buf[MAX_COMMAND_LENGTH];
-	// TODO: verify if the input is well formed
+	// TODO: command not found error being added to the history
 	getstr(buf);
 
 	if (strlen(buf) > 0)
@@ -219,18 +309,26 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 {
 	char *input_string_piped[MAX_PIPED_PROGRAMS];
 	int piped = 0;
+	// char **parsed_redirects = malloc(MAX_COMMANDS);
 
 	piped = parse_pipe(input_string, input_string_piped);
 
 	if (piped)
 	{
 		parse_whitespaces(input_string_piped[0], parsed_args);
+		// parse_redirects(input_string_piped[0], parse_redirects, parsed_args);
+		// parsed_args = parsed_redirects;
 		parse_whitespaces(input_string_piped[1], parsed_args_piped);
+		// parse_redirects(input_string_piped[1], parse_redirects, parsed_args_piped);
+		// parsed_args_piped = parsed_redirects;
 	}
 	else
+	{
 		parse_whitespaces(input_string, parsed_args);
-
-	if (handle_builtin_commands(parsed_args) == 0)
+		// parse_redirects(input_string, parse_redirects, parsed_args);
+		// parsed_args = parsed_redirects;
+	}
+	if (parsed_args[0] != NULL && handle_builtin_commands(parsed_args) == 0)
 		return BUILTIN;
 	else
 		return SIMPLE + piped;
@@ -254,10 +352,44 @@ int parse_pipe(char *input_string, char **input_string_piped)
 void parse_whitespaces(char *input_string, char **parsed)
 {
 	int i = 0;
+	char double_quote = '"';
+	char *double_quote_position = NULL;
+	char *whitespace_position = NULL;
+	char *parsed_quotes = NULL;
 
 	for (i = 0; i < MAX_COMMANDS - 1; i++)
 	{
-		parsed[i] = strsep(&input_string, " ");
+		if (input_string)
+		{
+			double_quote_position = strchr(input_string, double_quote);
+			whitespace_position = strchr(input_string, ' ');
+		}
+		else
+		{
+			parsed[i] = NULL;
+			i++;
+			break;
+		}
+
+		// whitespace is after or inside double quotes
+		if ((double_quote_position && whitespace_position && (double_quote_position < whitespace_position)) ||
+				(double_quote_position && whitespace_position == NULL))
+		{
+			// store what's before first double_quote
+			parsed_quotes = strsep(&input_string, &double_quote);
+			if (parsed_quotes && strlen(parsed_quotes) > 0)
+				parsed[i++] = parsed_quotes;
+			// store what's inside double_quotes
+			parsed[i] = strsep(&input_string, &double_quote);
+			if (input_string == NULL)
+			{
+				printw("ysh: syntax error: missing closing '\"'\n");
+				parsed[0] = NULL;
+				return;
+			}
+		}
+		else
+			parsed[i] = strsep(&input_string, " ");
 
 		if (parsed[i] == NULL)
 		{
@@ -290,7 +422,7 @@ command_type handle_builtin_commands(char **parsed_args)
 		exit_flag = 1;
 		break;
 	case EXPORT:
-		export(parsed_args[1]);
+		export(parsed_args + 1);
 		break;
 	case FG:
 		break;
@@ -308,7 +440,7 @@ command_type handle_builtin_commands(char **parsed_args)
 		_set();
 		break;
 	default:
-		// it must check if it's a system co
+		// it must check if it's a system command
 		ret = SIMPLE;
 		break;
 	}
@@ -316,7 +448,7 @@ command_type handle_builtin_commands(char **parsed_args)
 	if (ret == -1)
 	{
 		printw("%s: %s: %s\n", parsed_args[0], strerror(errno), parsed_args[1]);
-		ret = 0;
+		ret = BUILTIN;
 	}
 
 	return ret;
@@ -353,6 +485,7 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
+	// TODO: deal with \n and special characters
 	FILE *output_file = NULL;
 
 	if (redirection_file_stream.output_stream != NULL &&
@@ -360,61 +493,57 @@ void _echo(char **message)
 		printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
 
 	// it's a env variable
-	if (message[0][0] == '$')
+	if (message[0] && message[0][0] == '$')
 	{
 		// +1 to skip '$'
 		char *env_variable = getenv(message[0] + 1);
-		if (output_file == NULL)
+		if (env_variable == NULL)
+			printw("echo: environment variable '%s' doesn't exist\n", message[0] + 1);
+		else if (output_file == NULL)
 			printw("%s\n", env_variable);
 		else
 			fprintf(output_file, "%s\n", env_variable);
 	}
-	else
+	else if (message[0])
 	{
 		// it's a string list
 		for (char **string = message; *string != NULL; string++)
 		{
-			if (*string != NULL)
-			{
-				if (output_file == NULL)
-					printw("%s ", *string);
-				else
-					fprintf(output_file, "%s ", *string);
-			}
+			if (output_file == NULL)
+				printw("%s ", *string);
 			else
-			{
-				break;
-			}
+				fprintf(output_file, "%s ", *string);
 		}
 		printw("\n");
 	}
+	else
+		printw("\n");
 
 	if (output_file != NULL)
 		fclose(output_file);
 }
 
-void export(char *config)
+void export(char **config)
 {
 	char *env_variable, *append_env_variable, *append_env_variable_value;
 	char *aux_config_start, *aux_config;
 	int ret = 0;
 
-	if (config == NULL)
+	if (config[0] == NULL)
 	{
 		printw("Usage: export 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'\n");
 		return;
 	}
-	// TODO: solve echo bug when export MYPATH=$MYPATH:/home/leonardo/Downloads
 
 	// this must be done because strsep changes the aux_config pointer.
-	aux_config_start = aux_config = malloc(strlen(config));
+	aux_config_start = aux_config = malloc(strlen(config[0]));
 
-	strcpy(aux_config, config);
-
+	strcpy(aux_config, config[0]);
 	// aux_config now contains the new value
 	env_variable = strsep(&aux_config, "=");
+
 	if (getenv(env_variable) == NULL)
-		printw("export: environment variable '%s' doesn't exit\n", env_variable);
+		printw("export: environment variable '%s' doesn't exist\n", env_variable);
 
 	if (aux_config != NULL && aux_config[0] == '$')
 	{
@@ -431,12 +560,16 @@ void export(char *config)
 			ret = setenv(env_variable, append_env_variable_value, 1);
 		}
 		else
-			printw("export: environment variable '%s' doesn't exit\n", (append_env_variable + 1));
+			printw("export: environment variable '%s' doesn't exist\n", (append_env_variable + 1));
 	}
-	else if (aux_config != NULL)
-		ret = setenv(env_variable, aux_config, 1);
-	else
+	else if (aux_config == NULL)
 		printw("export: syntax error: missing '='\n");
+	else if (strlen(aux_config) > 0)
+		ret = setenv(env_variable, aux_config, 1);
+	else if (config[1])
+		ret = setenv(env_variable, config[1], 1);
+	else
+		ret = setenv(env_variable, "", 1);
 
 	if (ret == -1)
 	{
@@ -542,15 +675,12 @@ void _set()
 
 void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args)
 {
-	// ./media 2 3 >out < message 2> err
-	// parsed_args = {"./media>, "out<in", "2>", "err"}
 	int argc = 0, new_arg_flag = 0;
-	char *string2separate, *separator_ret = NULL;
+	char *string2separate, *separator_ret = NULL, *redirect_sign = NULL;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
 		string2separate = malloc(strlen(*arg));
 		strcpy(string2separate, *arg);
-		// "./media>"
 		new_arg_flag = 0;
 		for (char *c = string2separate; *c != '\0'; c++)
 		{
@@ -560,12 +690,15 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 				separator_ret = strsep(&string2separate, "<");
 				break;
 			case '>':
-				// separator_ret = "./media" ; strinf2separate = ""
+				parsed_redirects[argc] = ">";
 				separator_ret = strsep(&string2separate, ">");
 				break;
 			case '2':
 				if (*(c + 1) == '>')
+				{
+					parsed_redirects[argc] = "2>";
 					separator_ret = strsep(&string2separate, "2>");
+				}
 				break;
 			default:
 				separator_ret = NULL;
@@ -573,20 +706,24 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 				// "in <out 2> "
 				// " 1   2   2
 			}
-
 			if (separator_ret != NULL)
 			{
-				c = string2separate;
 				if (strlen(separator_ret) > 0)
 				{
 					parsed_redirects[argc] = separator_ret;
 					if (new_arg_flag)
-					{
 						argc++;
-					}
 					else
 						new_arg_flag = 1;
 				}
+				redirect_sign = (char *)malloc(2);
+				redirect_sign[0] = *c;
+				redirect_sign[1] = '\0';
+				if (new_arg_flag)
+					argc++;
+				else
+					new_arg_flag = 1;
+				c = string2separate;
 			}
 		}
 		if (strlen(string2separate) > 0)
@@ -598,11 +735,41 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 		// free(string2separate);
 		argc++;
 	}
+	parsed_redirects[argc] = NULL;
+	// handle_redirect(parsed_redirects);
 }
 
-int handle_redirect(char **parsed_args, io_stream file_stream)
+void handle_redirect(char **parsed_redirects)
 {
-	return 0;
+	char **arg = parsed_redirects;
+	redirection_file_stream.error_stream = NULL;
+	redirection_file_stream.input_stream = NULL;
+	redirection_file_stream.output_stream = NULL;
+	int argc = 0, arg_end = 0;
+	for (; *arg != NULL; arg++)
+	{
+		switch (**arg)
+		{
+		case '<':
+			redirection_file_stream.input_stream = *(arg + 1);
+			arg_end = argc;
+			break;
+		case '>':
+			redirection_file_stream.output_stream = *(arg + 1);
+			arg_end = argc;
+			break;
+		case '2':
+			redirection_file_stream.error_stream = *(arg + 1);
+			arg_end = argc;
+			break;
+		default:
+			break;
+		}
+		argc++;
+	}
+	if (arg_end != 0)
+		parsed_redirects[argc] = NULL;
+	return;
 }
 
 void exec_system_command(char **parsed_args, io_stream file_stream)
