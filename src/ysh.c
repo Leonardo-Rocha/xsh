@@ -13,7 +13,7 @@ int main()
 
 	while (1)
 	{
-		print_usr_dir();
+		print_prompt_setting();
 
 		ch = getch();
 		// buffer verification for arrow keys and signals
@@ -40,9 +40,9 @@ int main()
 				refresh();
 				break;
 			case '\n':
-				print_usr_dir();
+				print_prompt_setting();
 				printw("\n");
-				print_usr_dir();
+				print_prompt_setting();
 			default:
 				break;
 			}
@@ -100,11 +100,14 @@ void config_environment_variables()
 	// MYPATH
 	char *env_path = getenv("PATH");
 	setenv("MYPATH", env_path, 1);
-	// TODO: MYPS1
+	// MYPS1
+	// char *default_myps1 = "\\u@\\h: \\W \\$";
+	char *default_myps1 = "\\D{%c}";
+	setenv("MYPS1", default_myps1, 1);
 }
 
 // TODO: tint with some colors to make it more beautiful
-void print_usr_dir()
+void print_prompt_setting()
 {
 	char *username = getenv("USER");
 	char hostname[32];
@@ -123,7 +126,7 @@ void print_usr_dir()
 
 	printw("%s@%s:", username, hostname);
 
-	// change the /home/username to ~/
+	// abbreviate $HOME with a tilde
 	if (strncasecmp(cwd, home, home_length) == 0)
 	{
 		char *c = (cwd + home_length);
@@ -133,6 +136,61 @@ void print_usr_dir()
 		printw("%s $ ", cwd);
 
 	refresh();
+}
+
+// TODO: make this the real one when it's done
+void _print_prompt_setting()
+{
+	char *prompt_setting = getenv("MYPS1");
+
+	for (char *c = prompt_setting; *c != '\0';)
+	{
+		if (*c != '\\')
+		{
+			printw("%c", *c);
+			c++;
+		}
+		else
+			c = parse_prompt_setting_special_characters(c);
+	}
+}
+
+char *parse_prompt_setting_special_characters(char *string)
+{
+	// TODO: complete cases
+	char buffer[80];
+
+	time_t rawtime;
+	time(&rawtime);
+	struct tm *timeinfo = localtime(&rawtime);
+
+	switch (string[1])
+	{
+	case 'a':
+		printf("\a");
+		string++;
+		break;
+	case 'd':
+		strftime(buffer, 80, "%a %b %d", timeinfo);
+		printw("%s", buffer);
+		string++;
+		break;
+	case 'D':
+		if (string[2] == '{')
+		{
+			string += 3;
+			strftime(buffer, 80, strsep(&string, "}"), timeinfo);
+			printw("%s", buffer);
+		}
+	case 'e':
+		printw("\e");
+		string++;
+		break;
+	default:
+		break;
+	}
+
+	return string;
 }
 
 int read_input(char *input_string)

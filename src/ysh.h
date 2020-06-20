@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <readline/history.h>
 #include <errno.h>
+#include <time.h>
 
 #define MAX_COMMANDS 51
 #define MAX_COMMAND_LENGTH 1000
@@ -74,8 +75,12 @@ void init_shell();
 /* Config the variables MYPATH and MYPS1. */
 void config_environment_variables();
 
-/* Print username@hostname: dir $ */
-void print_usr_dir();
+/* Print prompt setting using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
+void print_prompt_setting();
+
+void _print_prompt_setting();
+
+char *parse_prompt_setting_special_characters(char *string);
 
 /* Return 0 if there's a non-null input, 1 otherwise. */
 int read_input(char *input_string);
