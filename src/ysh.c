@@ -13,7 +13,7 @@ int main(int argc, char const *argv[])
 
 	while (1)
 	{
-		_print_primary_prompt_string();
+		print_primary_prompt_string();
 
 		ch = getch();
 		// buffer verification for arrow keys and signals
@@ -40,9 +40,9 @@ int main(int argc, char const *argv[])
 				refresh();
 				break;
 			case '\n':
-				_print_primary_prompt_string();
+				print_primary_prompt_string();
 				printw("\n");
-				_print_primary_prompt_string();
+				print_primary_prompt_string();
 			default:
 				break;
 			}
@@ -101,8 +101,7 @@ void config_environment_variables(const char *_ysh_path)
 	char *env_path = getenv("PATH");
 	setenv("MYPATH", env_path, 1);
 	// $MYPS1
-	// char *default_myps1 = "\\u@\\h: \\W \\$";
-	char *default_myps1 = "\\D{%c}";
+	char *default_myps1 = "\\u@\\h:\\w \\$ ";
 	if (getenv("MYPS1") == NULL)
 		setenv("MYPS1", default_myps1, 1);
 
@@ -122,41 +121,10 @@ void config_environment_variables(const char *_ysh_path)
 	// setenv("0", ysh_path, 1);
 }
 
-// TODO: tint with some colors to make it more beautiful
-void print_prompt_setting()
+void print_primary_prompt_string()
 {
-	char *username = getenv("USER");
-	char hostname[32];
-	int hostname_ret = gethostname(hostname, sizeof(hostname));
-	char *cwd = getcwd(NULL, 0);
-	char *home = getenv("HOME");
-	int home_length = strlen(home);
-
-	if (cwd == NULL || hostname_ret != 0)
-	{
-		printw("ysh: failed to print user info: %s", strerror(errno));
-		printw("exiting...");
-		destroy_shell();
-		exit(EXIT_FAILURE);
-	}
-
-	printw("%s@%s:", username, hostname);
-
-	// abbreviate $HOME with a tilde
-	if (strncasecmp(cwd, home, home_length) == 0)
-	{
-		char *c = (cwd + home_length);
-		printw("~%s $ ", c);
-	}
-	else // simply prints the dir
-		printw("%s $ ", cwd);
-
-	refresh();
-}
-
-// TODO: make this the real one when it's done
-void _print_primary_prompt_string()
-{
+	// TODO: tint with some colors to make it more beautiful
+	// TODO2: fix being able to erase the last character
 	char *_prompt_setting = getenv("MYPS1");
 	char *start_address, *prompt_setting = malloc(strlen(_prompt_setting));
 
@@ -239,6 +207,7 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \l : the basename of the shell'ss terminal device name
 	case 'l':
+		// TODO: change this from "/bin/bash" to actual ysh absolute path
 		stat("/bin/bash", stat_buf);
 		if (stat_buf != NULL)
 			printf("%d", minor(stat_buf->st_dev));
@@ -274,7 +243,44 @@ char *parse_prompt_string_special_characters(char *string)
 	// \@ : the current time in 12-hour am/pm format
 	case '@':
 		strftime(buffer, BUFFER_SIZE, "%r", timeinfo);
-		printw("%s:%s", strsep(&buffer, ":"), strsep(&buffer, ":"));
+		char *hours = strsep(&buffer, ":");
+		char *minutes = strsep(&buffer, ":");
+		printw("%s:%s", hours, minutes);
+		string++;
+		break;
+	// \A : the time, in 24-hour HH:MM format.
+	case 'A':
+		strftime(buffer, BUFFER_SIZE, "%R", timeinfo);
+		printw("%s", buffer);
+		string++;
+		break;
+	// \u : the username of the current user.
+	case 'u':
+		buffer = getenv("USER");
+		printw("%s", buffer);
+		string++;
+		break;
+	// \v : the version of Bash (e.g., 2.00)
+	case 'v':
+		// TODO: print version
+		break;
+	// \V : the release of Bash, version + patchlevel (e.g., 2.00.0)
+	case 'V':
+		// TODO: print version + patchlevel
+		break;
+	// \w : the current working directory, with $HOME abbreviated with a tilde (uses the $PROMPT_DIRTRIM variable).
+	case 'w':
+		buffer = getcwd(buffer, BUFFER_SIZE);
+		buffer = abbreviate_home(buffer);
+		printw("%s", buffer);
+		string++;
+		break;
+	case 'W':
+		// TODO: deal with pwd basename
+		string++;
+		break;
+	case '$':
+		printw("$");
 		string++;
 		break;
 	default:
@@ -283,6 +289,20 @@ char *parse_prompt_string_special_characters(char *string)
 
 	free(buffer_start_address);
 	return string;
+}
+
+char *abbreviate_home(char *cwd)
+{
+	char *home = getenv("HOME");
+	int home_length = strlen(home);
+
+	if (strncasecmp(cwd, home, home_length) == 0)
+	{
+		char *c = (cwd + home_length);
+		snprintf(cwd, strlen(cwd), "~%s", c);
+	}
+
+	return cwd;
 }
 
 int read_input(char *input_string)

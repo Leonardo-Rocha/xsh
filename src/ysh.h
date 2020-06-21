@@ -80,13 +80,17 @@ void init_shell(const char *_ysh_path);
 /* Config the variables MYPATH and MYPS1. */
 void config_environment_variables(const char *_ysh_path);
 
-/* Print prompt setting using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
-void print_prompt_setting();
-
-void _print_primary_prompt_string();
+/* Print prompt string using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
+void print_primary_prompt_string();
 
 /* Parse and expand prompt string special characters. */
 char *parse_prompt_string_special_characters(char *string);
+
+/* 
+ * Abbreviate $HOME with a tilde.
+ * Return abbreviated cwd.
+ */
+char *abbreviate_home(char *cwd);
 
 /* Return 0 if there's a non-null input, 1 otherwise. */
 int read_input(char *input_string);
