@@ -105,8 +105,10 @@ void config_environment_variables(const char *_ysh_path)
 	char *default_myps1 = "\\D{%c}";
 	if (getenv("MYPS1") == NULL)
 		setenv("MYPS1", default_myps1, 1);
+
+	// TODO: FIX THIS
 	// $0 - shell path
-	// ysh_path = malloc(strlen(_ysh_path));
+	// ysh_path = malloc(strlen(_ysh_path) * sizeof(char));
 	// strcpy(ysh_path, _ysh_path);
 	// // remove "./"
 	// strsep(&ysh_path, "./");
@@ -286,11 +288,14 @@ char *parse_prompt_string_special_characters(char *string)
 int read_input(char *input_string)
 {
 	char buf[MAX_COMMAND_LENGTH];
-	// TODO: command not found error being added to the history
+	// HIST_ENTRY *history_entry;
 	getstr(buf);
 
 	if (strlen(buf) > 0)
 	{
+		// TODO: do not add buf if it's equal to the previous entry
+		// history_entry = previous_history();
+		// if (strcmp(buf, history_entry->line) != 0)
 		add_history(buf);
 		strcpy(input_string, buf);
 		return 0;
@@ -618,9 +623,9 @@ void print_commands_history()
 		for (; history[i]; i++)
 		{
 			if (output_file == NULL)
-				printw("%s\n", history[i]->line);
+				printw("%d %s\n", i, history[i]->line);
 			else
-				fprintf(output_file, "%s\n", history[i]->line);
+				fprintf(output_file, "%d %s\n", i, history[i]->line);
 		}
 	}
 
@@ -820,6 +825,7 @@ int exec_mypath(const char *file, char *const argv[])
 
 void handle_exec_error(char *command)
 {
+	// TODO: command not found error being added to the history
 	if (errno = ENOENT)
 		printw("ysh: command not found: %s\n", command);
 	else
