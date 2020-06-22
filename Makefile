@@ -17,7 +17,7 @@ READLINE = -lreadline
 
 # Makefile targets
 
-all: dir ysh run
+all: dir ysh
 
 dir: 
 	mkdir -p $(BU)

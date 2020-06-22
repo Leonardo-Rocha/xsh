@@ -136,7 +136,7 @@ void _echo(char **message);
  * Define or redefine an environment variable.
  * config must be 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'
  * where [$APPEND_VAR] can be any variable and is optional. */
-void export(char **config);
+void export(char **config_args);
 
 /* Print the shell builtin commands and its details */
 void print_help();
@@ -174,4 +174,12 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 
 /* Process the redirects symbols in order to assign the correct I/0 streams*/
 void handle_redirect(char **parsed_redirects);
+
+/* 
+ * Safe strcat that reallocs destiny when needed and prevents buffer overflow. 
+ * Destiny may be null, in this case it works like a strcpy.
+ * Return NULL on failure, otherwise string destiny. Caller must invoke free on return.
+ */
+char *str_cat_realloc(char *destiny, const char *source);
+
 #endif

@@ -334,7 +334,7 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 {
 	char *input_string_piped[MAX_PIPED_PROGRAMS];
 	int piped = 0;
-	char **parsed_redirects = (char**) malloc(MAX_COMMANDS);
+	char **parsed_redirects = (char **)malloc(MAX_COMMANDS);
 
 	piped = parse_pipe(input_string, input_string_piped);
 
@@ -343,7 +343,7 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 		parse_whitespaces(input_string_piped[0], parsed_args);
 		parse_redirects(input_string_piped[0], parsed_redirects, parsed_args);
 		parsed_args = parsed_redirects;
-		
+
 		parse_whitespaces(input_string_piped[1], parsed_args_piped);
 		parse_redirects(input_string_piped[1], parsed_redirects, parsed_args_piped);
 		parsed_args_piped = parsed_redirects;
@@ -549,39 +549,44 @@ void _echo(char **message)
 		fclose(output_file);
 }
 
-void export(char **config)
+void export(char **config_args)
 {
-	char *env_variable, *append_env_variable, *append_env_variable_value;
-	char *aux_config_start, *aux_config;
+	// TODO: verify if there's redundancy
+	char *env_variable, *append_env_variable, *append_env_variable_value = NULL;
+	char *aux_config_start, *aux_config = NULL;
 	int ret = 0;
 
-	if (config[0] == NULL)
+	if (config_args[0] == NULL)
 	{
 		printw("Usage: export 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'\n");
 		return;
 	}
 
 	// this must be done because strsep changes the aux_config pointer.
-	aux_config_start = aux_config = malloc(strlen(config[0]));
+	aux_config_start = aux_config = str_cat_realloc(NULL, config_args[0]);
 
-	strcpy(aux_config, config[0]);
 	// aux_config now contains the new value
 	env_variable = strsep(&aux_config, "=");
 
 	if (getenv(env_variable) == NULL)
 		printw("export: environment variable '%s' doesn't exist\n", env_variable);
-
-	if (aux_config != NULL && aux_config[0] == '$')
+	else if (aux_config != NULL && aux_config[0] == '$')
 	{
 		append_env_variable = strsep(&aux_config, ":");
 		// + 1 to skip '$'
-		append_env_variable_value = getenv(append_env_variable + 1);
-		if (append_env_variable_value != NULL)
+		char *temp_value = getenv(append_env_variable + 1);
+		if (temp_value != NULL)
 		{
+			append_env_variable_value = str_cat_realloc(NULL, temp_value);
+			// if a ':' was found in strsep
 			if (aux_config != NULL)
 			{
-				strcat(append_env_variable_value, ":");
-				strcat(append_env_variable_value, aux_config);
+				str_cat_realloc(append_env_variable_value, ":");
+				if (strlen(aux_config) > 0)
+					str_cat_realloc(append_env_variable_value, aux_config);
+				// value is a string between double quotes
+				else
+					str_cat_realloc(append_env_variable_value, config_args[1]);
 			}
 			ret = setenv(env_variable, append_env_variable_value, 1);
 		}
@@ -592,8 +597,9 @@ void export(char **config)
 		printw("export: syntax error: missing '='\n");
 	else if (strlen(aux_config) > 0)
 		ret = setenv(env_variable, aux_config, 1);
-	else if (config[1])
-		ret = setenv(env_variable, config[1], 1);
+	// value is a string between double quotes
+	else if (config_args[1])
+		ret = setenv(env_variable, config_args[1], 1);
 	else
 		ret = setenv(env_variable, "", 1);
 
@@ -602,8 +608,11 @@ void export(char **config)
 		printw("export: setenv error: %s", strerror(errno));
 	}
 
-	if (aux_config_start != NULL)
+	if (aux_config_start)
 		free(aux_config_start);
+
+	if (append_env_variable_value)
+		free(append_env_variable_value);
 }
 
 void print_help()
@@ -706,6 +715,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
 		printw("arg: %s\n", *arg);
+		refresh();
 		string2separate = malloc(strlen(*arg));
 		strcpy(string2separate, *arg);
 		new_arg_flag = 0;
@@ -716,17 +726,17 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 			case '<':
 				parsed_redirects[argc] = "<";
 				if (new_arg_flag)
-						argc++;
-					else
-						new_arg_flag = 1;
+					argc++;
+				else
+					new_arg_flag = 1;
 				separator_ret = strsep(&string2separate, "<");
 				break;
 			case '>':
 				parsed_redirects[argc] = ">";
 				if (new_arg_flag)
-						argc++;
-					else
-						new_arg_flag = 1;
+					argc++;
+				else
+					new_arg_flag = 1;
 				separator_ret = strsep(&string2separate, ">");
 				break;
 			case '2':
@@ -777,7 +787,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	}
 	parsed_redirects[argc] = NULL;
 	handle_redirect(parsed_redirects);
-}				
+}
 
 void handle_redirect(char **parsed_redirects)
 {
@@ -789,6 +799,7 @@ void handle_redirect(char **parsed_redirects)
 	for (; *arg != NULL; arg++)
 	{
 		printw("handle_redirect arg: %s\n", *arg);
+		refresh();
 		switch (**arg)
 		{
 		case '<':
@@ -946,4 +957,19 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 		}
 	}
 	return 0;
+}
+
+char *str_cat_realloc(char *destiny, const char *source)
+{
+	size_t destiny_length = destiny ? strlen(destiny) : 0, source_length = strlen(source);
+	size_t new_length = destiny_length + source_length + 1 /* NULL */;
+	char *ret = destiny ? realloc(destiny, new_length) : malloc(new_length);
+
+	if (ret)
+	{
+		memcpy(ret + destiny_length, source, source_length + 1 /* NULL */);
+		ret[destiny_length + source_length] = 0;
+	}
+
+	return ret;
 }
