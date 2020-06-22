@@ -6,6 +6,7 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -74,6 +75,8 @@ char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "he
 
 int exit_flag = 0;
 
+int command_number = 0;
+
 /* Initialize ncurses with some specific options and tries to read history from ~/.history */
 void init_shell(const char *_ysh_path);
 
@@ -83,20 +86,24 @@ void config_environment_variables(const char *_ysh_path);
 /* Print prompt string using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
 void print_primary_prompt_string();
 
-/* Parse and expand prompt string special characters. */
-char *parse_prompt_string_special_characters(char *string);
-
 /* 
  * Abbreviate $HOME with a tilde.
  * Return abbreviated cwd.
  */
 char *abbreviate_home(char *cwd);
 
-/* Return 0 if there's a non-null input, 1 otherwise. */
-int read_input(char *input_string);
+/* 
+ * Get the basename of the current working directory.
+ * cwd must be passed as a temporary buffer.
+ * Return the basename on sucess, otherwise NULL.
+ */
+char *get_cwd_basename(char *cwd);
 
-/* Check if the char is valid first char for a command name. [_$ a-z A-Z] */
-int is_valid_char(char first_char);
+/* Return 0 if there's a non-null input, -1 otherwise. */
+int verify_input(char *input_string);
+
+/* Add command to history if it's not repeated. */
+void add_command_to_history(char *input_string);
 
 /* Return the command_type enum. */
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped);
@@ -113,11 +120,12 @@ void parse_whitespaces(char *input_string, char **parsed);
 /* Parse redirect symbols (<, >, 2>) in input_string, assigning the result to the parsed list of strings*/
 void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args);
 
-/* Separa */
+/* Parse and expand prompt string special characters. */
+char *parse_prompt_string_special_characters(char *string);
 
-/* Return BUILTIN if it's a builtin command or SIMPLE if it's a system command. */
-command_type handle_builtin_commands(char **parsed_args);
+int update_arg_count(int *argc, int *new_arg_flag);
 
+void update_IO();
 /* 
  * Search in the builtin commands list. 
  * Return the matching command enum. 
@@ -151,20 +159,29 @@ void _set();
 
 // void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
 
-void exec_system_command(char **parsed_args, io_stream file_stream);
+/* 
+ * Parse the input_string and exec the control sequence.
+ * parsed_args and parsed_args_piped are buffers to store the parsed sequence.
+ */
+void exec_control_sequence(char *input_string, char **parsed_args, char **parsed_args_piped);
+
+void exec_system_command(char **parsed_args);
 
 /* 
  * Execute FILE, searching in the `MYPATH' environment variable if it contains no slashes, with arguments ARGV.
  * Returns 0 on success, -1 on error and errno is set to indicate the error. */
 int exec_mypath(const char *file, char *const argv[]);
 
-/* Output "command not found" or "Failed to exec command". */
-void handle_exec_error(char *command);
-
 void exec_system_command_piped(char **parsed_args, char **parsed_args_piped);
 
 /* End ncurses window and dump history to ~/.history */
 void destroy_shell();
+
+/* Return BUILTIN if it's a builtin command or SIMPLE if it's a system command. */
+command_type handle_builtin_commands(char **parsed_args);
+
+/* Output "command not found" or "Failed to exec command". */
+void handle_exec_error(char *command);
 
 /* 
  * Call fopen and handle errors.

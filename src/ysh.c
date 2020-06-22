@@ -4,10 +4,8 @@ int main(int argc, char const *argv[])
 {
 	char input_string[MAX_COMMAND_LENGTH] = {0}, *parsed_args[MAX_COMMANDS];
 	char *parsed_args_piped[MAX_COMMANDS];
-	command_type exec_flag = 0;
 	int ch, y, x;
 	HIST_ENTRY *history_entry;
-	io_stream no_stream = {NULL, NULL, NULL};
 
 	init_shell(argv[0]);
 
@@ -49,27 +47,19 @@ int main(int argc, char const *argv[])
 			ch = getch();
 		}
 		refresh();
-
+		// TODO: change input from getstr to all using getch.
 		ungetch(ch);
 		getyx(stdscr, y, x);
 		move(y, --x);
 
-		if (read_input(input_string))
+		getstr(input_string);
+
+		if (verify_input(input_string))
 			continue;
 
-		exec_flag = process_input_string(input_string, parsed_args, parsed_args_piped);
+		add_command_to_history(input_string);
 
-		switch (exec_flag)
-		{
-		case SIMPLE:
-			exec_system_command(parsed_args, no_stream);
-			break;
-		case PIPE:
-			exec_system_command_piped(parsed_args, parsed_args_piped);
-			break;
-		default:
-			break;
-		}
+		exec_control_sequence(input_string, parsed_args, parsed_args_piped);
 
 		if (exit_flag)
 			break;
@@ -124,15 +114,12 @@ void config_environment_variables(const char *_ysh_path)
 void print_primary_prompt_string()
 {
 	// TODO: tint with some colors to make it more beautiful
-	// TODO2: fix being able to erase the last character
-	char *_prompt_setting = getenv("MYPS1");
-	char *start_address, *prompt_setting = malloc(strlen(_prompt_setting));
+	char *_prompt_string = getenv("MYPS1");
+	char *start_address = NULL, *prompt_string;
 
-	start_address = prompt_setting;
+	start_address = prompt_string = str_cat_realloc(NULL, _prompt_string);
 
-	strcpy(prompt_setting, _prompt_setting);
-
-	for (char *c = prompt_setting; *c != '\0'; c++)
+	for (char *c = prompt_string; *c != '\0'; c++)
 	{
 		if (*c != '\\')
 			printw("%c", *c);
@@ -140,7 +127,8 @@ void print_primary_prompt_string()
 			c = parse_prompt_string_special_characters(c);
 	}
 
-	free(start_address);
+	if (start_address)
+		free(start_address);
 }
 
 char *parse_prompt_string_special_characters(char *string)
@@ -148,6 +136,8 @@ char *parse_prompt_string_special_characters(char *string)
 	// TODO: complete cases
 	char *buffer = malloc(BUFFER_SIZE * sizeof(char));
 	char *buffer_start_address = buffer;
+	char *input_string = NULL, **parsed_args = NULL, **parsed_args_piped = NULL;
+	uid_t uid;
 	int ret;
 	struct stat *stat_buf = NULL;
 
@@ -268,26 +258,80 @@ char *parse_prompt_string_special_characters(char *string)
 	case 'V':
 		// TODO: print version + patchlevel
 		break;
-	// \w : the current working directory, with $HOME abbreviated with a tilde (uses the $PROMPT_DIRTRIM variable).
+	// \w : the current working directory, with $HOME abbreviated with a tilde.
 	case 'w':
 		buffer = getcwd(buffer, BUFFER_SIZE);
 		buffer = abbreviate_home(buffer);
 		printw("%s", buffer);
 		string++;
 		break;
+	// \W : the basename of the current working directory, with $HOME abbreviated with a tilde.
 	case 'W':
-		// TODO: deal with pwd basename
+		buffer = get_cwd_basename(buffer);
+		printw("%s", buffer);
 		string++;
 		break;
-	case '$':
-		printw("$");
+	// \! : the history number of this command
+	case 'i':
+		printw("%d", history_length - 1);
 		string++;
+		break;
+	// \# : the command number of this command
+	case '#':
+		printw("%d", command_number + 1);
+		string++;
+		break;
+	// \$ : if the effective UID is 0, a #, otherwise a $
+	case '$':
+		uid = geteuid();
+		if (uid == 0)
+			printw("#");
+		else
+			printw("$");
+		string++;
+		break;
+	// \\ : a backslash
+	case '\\':
+		printw("\\");
+		string++;
+		break;
+	// \[ : begin a sequence of non-printing characters, which could be used to embed a terminal control sequence into the prompt
+	case '[':
+		string++;
+		input_string = calloc(MAX_COMMAND_LENGTH, sizeof(char));
+		// \] : end a sequence of non-printing characters
+		input_string = strsep(&string, "\\]");
+		if (verify_input(input_string) == 0)
+		{
+			parsed_args = calloc(MAX_COMMANDS, sizeof(char *));
+			parsed_args_piped = calloc(MAX_COMMANDS, sizeof(char *));
+			add_command_to_history(input_string);
+			exec_control_sequence(input_string, parsed_args, parsed_args_piped);
+		}
 		break;
 	default:
+		// TODO: solve when decimal > 127
+		// \nnn : the character corresponding to the octal number nnn
+		if (isdigit(string[1]) && isdigit(string[2]) && isdigit(string[3]))
+		{
+			int third_digit = atoi(&string[1]) << 16;
+			int second_digit = atoi(&string[2]) << 8;
+			int first_digit = atoi(&string[3]);
+			printw("%c", third_digit + second_digit + first_digit);
+			string += 3;
+		}
 		break;
 	}
 
 	free(buffer_start_address);
+
+	if (input_string)
+		free(input_string);
+	if (parsed_args_piped)
+		free(parsed_args_piped);
+	if (parsed_args)
+		free(parsed_args);
+
 	return string;
 }
 
@@ -305,29 +349,54 @@ char *abbreviate_home(char *cwd)
 	return cwd;
 }
 
-int read_input(char *input_string)
+char *get_cwd_basename(char *cwd)
 {
-	char buf[MAX_COMMAND_LENGTH];
-	// HIST_ENTRY *history_entry;
-	getstr(buf);
+	char *temp = NULL;
 
-	if (strlen(buf) > 0)
+	cwd = getcwd(cwd, BUFFER_SIZE);
+	cwd = abbreviate_home(cwd);
+
+	do
 	{
-		// TODO: do not add buf if it's equal to the previous entry
-		// history_entry = previous_history();
-		// if (strcmp(buf, history_entry->line) != 0)
-		add_history(buf);
-		strcpy(input_string, buf);
+		temp = strsep(&cwd, "/");
+	} while (cwd);
+
+	return temp;
+}
+
+int verify_input(char *input_string)
+{
+	if (strlen(input_string) > 0)
 		return 0;
-	}
 	else
 		return -1;
 }
 
-int is_valid_char(char first_char)
+void add_command_to_history(char *input_string)
 {
-	return (first_char >= 'a' && first_char <= 'z') || (first_char >= 'A' && first_char <= 'Z') ||
-				 (first_char == '$') || (first_char == '_') || (first_char == '.');
+	// TODO: do not add buf if it's equal to the previous entry
+	// history_entry = previous_history();
+	// if (strcmp(buf, history_entry->line) != 0)
+	add_history(input_string);
+}
+
+void exec_control_sequence(char *input_string, char **parsed_args, char **parsed_args_piped)
+{
+	command_type exec_flag = process_input_string(input_string, parsed_args, parsed_args_piped);
+
+	switch (exec_flag)
+	{
+	case SIMPLE:
+		exec_system_command(parsed_args);
+		break;
+	case PIPE:
+		exec_system_command_piped(parsed_args, parsed_args_piped);
+		break;
+	default:
+		break;
+	}
+
+	command_number++;
 }
 
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped)
@@ -712,75 +781,59 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 {
 	int argc = 0, new_arg_flag = 0;
 	char *string2separate, *separator_ret = NULL, *redirect_sign = NULL;
+	char separator;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
 		printw("arg: %s\n", *arg);
 		refresh();
-		string2separate = malloc(strlen(*arg));
-		strcpy(string2separate, *arg);
+		string2separate = str_cat_realloc(NULL, *arg);
+
 		new_arg_flag = 0;
 		for (char *c = string2separate; *c != '\0'; c++)
 		{
 			switch (*c)
 			{
 			case '<':
-				parsed_redirects[argc] = "<";
-				if (new_arg_flag)
-					argc++;
-				else
-					new_arg_flag = 1;
+				separator = *c;
 				separator_ret = strsep(&string2separate, "<");
 				break;
 			case '>':
-				parsed_redirects[argc] = ">";
-				if (new_arg_flag)
-					argc++;
-				else
-					new_arg_flag = 1;
+				separator = *c;
 				separator_ret = strsep(&string2separate, ">");
 				break;
 			case '2':
 				if (*(c + 1) == '>')
 				{
-					parsed_redirects[argc] = "2>";
-					if (new_arg_flag)
-						argc++;
-					else
-						new_arg_flag = 1;
+					separator = *c;
 					separator_ret = strsep(&string2separate, "2>");
 				}
 				break;
 			default:
 				separator_ret = NULL;
 				break;
-				// "in <out 2> "
-				// " 1   2   2
 			}
 			if (separator_ret != NULL)
 			{
 				if (strlen(separator_ret) > 0)
 				{
 					parsed_redirects[argc] = separator_ret;
-					if (new_arg_flag)
-						argc++;
-					else
-						new_arg_flag = 1;
+					argc = update_arg_count(&argc, &new_arg_flag);
 				}
 				redirect_sign = (char *)malloc(2);
-				redirect_sign[0] = *c;
+				redirect_sign[0] = separator;
 				redirect_sign[1] = '\0';
-				if (new_arg_flag)
-					argc++;
-				else
-					new_arg_flag = 1;
+
+				printw("redirect: %c , %s \n", separator, redirect_sign);
+				refresh();
+				parsed_redirects[argc] = redirect_sign;
+				argc = update_arg_count(&argc, &new_arg_flag);
 				c = string2separate;
 			}
 		}
 		if (strlen(string2separate) > 0)
 		{
 			parsed_redirects[argc] = string2separate;
-			if (new_arg_flag)
-				argc++;
+			argc = update_arg_count(&argc, &new_arg_flag);
 		}
 		// free(string2separate);
 		argc++;
@@ -789,30 +842,47 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	handle_redirect(parsed_redirects);
 }
 
+int update_arg_count(int *argc, int *new_arg_flag)
+{
+	if (*new_arg_flag)
+		(*argc)++;
+	else
+		*new_arg_flag = 1;
+	return *argc;
+}
 void handle_redirect(char **parsed_redirects)
 {
 	char **arg = parsed_redirects;
+	char *redirect_file, *current_dir = str_cat_realloc(NULL, getenv("PWD"));
+	current_dir = str_cat_realloc(current_dir, "/");
 	redirection_file_stream.error_stream = NULL;
 	redirection_file_stream.input_stream = NULL;
 	redirection_file_stream.output_stream = NULL;
-	int argc = 0, arg_end = 0;
+	int argc = 0, arg_end = 0, redirect_flag = 0;
 	for (; *arg != NULL; arg++)
 	{
+		redirect_file = str_cat_realloc(NULL, current_dir);
 		printw("handle_redirect arg: %s\n", *arg);
 		refresh();
 		switch (**arg)
 		{
 		case '<':
-			redirection_file_stream.input_stream = *(arg + 1);
-			arg_end = argc;
+			redirect_file = str_cat_realloc(redirect_file, *(arg + 1));
+			redirection_file_stream.input_stream = redirect_file;
+			printw("changing stdin to : %s\n", redirect_file);
+			refresh();
+			arg_end += redirect_flag * argc;
+			redirect_flag = 0;
 			break;
 		case '>':
 			redirection_file_stream.output_stream = *(arg + 1);
-			arg_end = argc;
+			arg_end += redirect_flag * argc;
+			redirect_flag = 0;
 			break;
 		case '2':
 			redirection_file_stream.error_stream = *(arg + 1);
-			arg_end = argc;
+			arg_end += redirect_flag * argc;
+			redirect_flag = 0;
 			break;
 		default:
 			break;
@@ -820,11 +890,11 @@ void handle_redirect(char **parsed_redirects)
 		argc++;
 	}
 	if (arg_end != 0)
-		parsed_redirects[argc] = NULL;
+		parsed_redirects[arg_end] = NULL;
 	return;
 }
 
-void exec_system_command(char **parsed_args, io_stream file_stream)
+void exec_system_command(char **parsed_args)
 {
 	// Forking a child
 	pid_t pid = fork();
@@ -836,7 +906,6 @@ void exec_system_command(char **parsed_args, io_stream file_stream)
 	}
 	else if (pid == 0)
 	{
-		//handle_redirect(parsed_args, file_stream);
 		if (exec_mypath(parsed_args[0], parsed_args) < 0)
 			handle_exec_error(parsed_args[0]);
 	}
@@ -859,6 +928,7 @@ int exec_mypath(const char *file, char *const argv[])
 		char mypathenv[strlen(mypath) + sizeof("MYPATH=")];
 		sprintf(mypathenv, "MYPATH=%s", mypath);
 		char *envp[] = {mypathenv, NULL};
+		update_IO();
 		ret = execvpe(file, argv, envp);
 	}
 	else
@@ -868,6 +938,27 @@ int exec_mypath(const char *file, char *const argv[])
 	}
 
 	return ret;
+}
+
+void update_IO()
+{
+	FILE *input_file = NULL, *output_file = NULL, *err_file = NULL;
+
+	if (redirection_file_stream.input_stream != NULL)
+	{
+		handle_file_open(&input_file, "r", redirection_file_stream.input_stream);
+		dup2(fileno(input_file), STDIN_FILENO);
+	}
+	if (redirection_file_stream.output_stream != NULL)
+	{
+		handle_file_open(&output_file, "w+", redirection_file_stream.output_stream);
+		dup2(fileno(output_file), STDOUT_FILENO);
+	}
+	if (redirection_file_stream.error_stream != NULL)
+	{
+		handle_file_open(&err_file, "w+", redirection_file_stream.error_stream);
+		dup2(fileno(err_file), STDERR_FILENO);
+	}
 }
 
 void handle_exec_error(char *command)
