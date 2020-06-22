@@ -150,13 +150,11 @@ char *parse_prompt_string_special_characters(char *string)
 	// \a : an ASCII bell character (07)
 	case 'a':
 		printf("\a");
-		string++;
 		break;
 	// \d : the date in “Weekday Month Date” format (e.g., “Tue May 26”)
 	case 'd':
 		strftime(buffer, BUFFER_SIZE, "%a %b %d", timeinfo);
 		printw("%s", buffer);
-		string++;
 		break;
 	// \D{format} : the format is passed to strftime(3) and the result is inserted into the prompt string;
 	// an empty format results in a locale-specific time representation. The braces are required.
@@ -170,65 +168,56 @@ char *parse_prompt_string_special_characters(char *string)
 		}
 		else
 			printw("\nysh: MYPS1 syntax error: '\\D{format}'");
+		string--;
 		break;
 	// \e : an ASCII escape character (027)
 	case 'e':
-		// TODO: what should we do here?
-		printw("\e");
-		string++;
+		printf("\e");
 		break;
 	// \h : the hostname up to the first ‘.’
 	case 'h':
 		ret = gethostname(buffer, BUFFER_SIZE);
 		if (ret == 0)
 			printw("%s", strsep(&buffer, "."));
-		string++;
 		break;
 	// \H : the hostname
 	case 'H':
 		ret = gethostname(buffer, BUFFER_SIZE);
 		if (ret == 0)
 			printw("%s", buffer);
-		string++;
 		break;
 	// \j : the number of jobs currently managed by the shell
 	case 'j':
 		// TODO: add this when jobs are done.
 		break;
-	// \l : the basename of the shell'ss terminal device name
+	// \l : the basename of the shell's terminal device name
 	case 'l':
-		// TODO: change this from "/bin/bash" to actual ysh absolute path
+		// TODO: change this from "/bin/bash" to actual ysh absolute path - do we want minor?
 		stat("/bin/bash", stat_buf);
 		if (stat_buf != NULL)
 			printf("%d", minor(stat_buf->st_dev));
-		string++;
 		break;
 	// \n : newline
 	case 'n':
 		printw("\n");
-		string++;
 		break;
 	// \r : carriage return
 	case 'r':
 		printw("\r");
-		string++;
 		break;
 	// \s : the name of the shell, the basename of $0 (the portion following the final slash)
 	case 's':
 		printw("ysh");
-		string++;
 		break;
 	// \t : the current time in 24-hour HH:MM:SS format
 	case 't':
 		strftime(buffer, BUFFER_SIZE, "%T", timeinfo);
 		printw("%s", buffer);
-		string++;
 		break;
 	// \T : the current time in 12-hour HH:MM:SS format
 	case 'T':
 		strftime(buffer, BUFFER_SIZE, "%r", timeinfo);
-		printw("%s", buffer);
-		string++;
+		printw("%s", strsep(&buffer, " PM"));
 		break;
 	// \@ : the current time in 12-hour am/pm format
 	case '@':
@@ -236,19 +225,16 @@ char *parse_prompt_string_special_characters(char *string)
 		char *hours = strsep(&buffer, ":");
 		char *minutes = strsep(&buffer, ":");
 		printw("%s:%s", hours, minutes);
-		string++;
 		break;
 	// \A : the time, in 24-hour HH:MM format.
 	case 'A':
 		strftime(buffer, BUFFER_SIZE, "%R", timeinfo);
 		printw("%s", buffer);
-		string++;
 		break;
 	// \u : the username of the current user.
 	case 'u':
 		buffer = getenv("USER");
 		printw("%s", buffer);
-		string++;
 		break;
 	// \v : the version of Bash (e.g., 2.00)
 	case 'v':
@@ -263,23 +249,19 @@ char *parse_prompt_string_special_characters(char *string)
 		buffer = getcwd(buffer, BUFFER_SIZE);
 		buffer = abbreviate_home(buffer);
 		printw("%s", buffer);
-		string++;
 		break;
 	// \W : the basename of the current working directory, with $HOME abbreviated with a tilde.
 	case 'W':
 		buffer = get_cwd_basename(buffer);
 		printw("%s", buffer);
-		string++;
 		break;
 	// \! : the history number of this command
-	case 'i':
-		printw("%d", history_length - 1);
-		string++;
+	case '!':
+		printw("%d", history_length);
 		break;
 	// \# : the command number of this command
 	case '#':
 		printw("%d", command_number + 1);
-		string++;
 		break;
 	// \$ : if the effective UID is 0, a #, otherwise a $
 	case '$':
@@ -288,16 +270,15 @@ char *parse_prompt_string_special_characters(char *string)
 			printw("#");
 		else
 			printw("$");
-		string++;
 		break;
 	// \\ : a backslash
 	case '\\':
 		printw("\\");
-		string++;
 		break;
 	// \[ : begin a sequence of non-printing characters, which could be used to embed a terminal control sequence into the prompt
 	case '[':
-		string++;
+		// TODO: not working
+		string += 2;
 		input_string = calloc(MAX_COMMAND_LENGTH, sizeof(char));
 		// \] : end a sequence of non-printing characters
 		input_string = strsep(&string, "\\]");
@@ -308,18 +289,22 @@ char *parse_prompt_string_special_characters(char *string)
 			add_command_to_history(input_string);
 			exec_control_sequence(input_string, parsed_args, parsed_args_piped);
 		}
+		string--;
 		break;
 	default:
-		// TODO: solve when decimal > 127
 		// \nnn : the character corresponding to the octal number nnn
-		if (isdigit(string[1]) && isdigit(string[2]) && isdigit(string[3]))
+		if (isdigit(string[1]))
 		{
-			int third_digit = atoi(&string[1]) << 16;
-			int second_digit = atoi(&string[2]) << 8;
-			int first_digit = atoi(&string[3]);
-			printw("%c", third_digit + second_digit + first_digit);
-			string += 3;
+			char *str_dif;
+			long int decimal = strtol(&string[1], &str_dif, 8);
+			// do not print special characters
+			if (decimal > 31)
+				printw("%c", decimal);
+			else
+				printf("%c", (int)decimal);
+			string += (str_dif - &string[1]);
 		}
+		string--;
 		break;
 	}
 
@@ -332,7 +317,7 @@ char *parse_prompt_string_special_characters(char *string)
 	if (parsed_args)
 		free(parsed_args);
 
-	return string;
+	return ++string;
 }
 
 char *abbreviate_home(char *cwd)
