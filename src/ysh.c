@@ -334,25 +334,25 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 {
 	char *input_string_piped[MAX_PIPED_PROGRAMS];
 	int piped = 0;
-	// char **parsed_redirects = (char*) malloc(MAX_COMMANDS);
+	char **parsed_redirects = (char**) malloc(MAX_COMMANDS);
 
 	piped = parse_pipe(input_string, input_string_piped);
 
 	if (piped)
 	{
 		parse_whitespaces(input_string_piped[0], parsed_args);
-		// parse_redirects(input_string_piped[0], parse_redirects, parsed_args);
-		// parsed_args = parsed_redirects;
+		parse_redirects(input_string_piped[0], parsed_redirects, parsed_args);
+		parsed_args = parsed_redirects;
 		
 		parse_whitespaces(input_string_piped[1], parsed_args_piped);
-		// parse_redirects(input_string_piped[1], parse_redirects, parsed_args_piped);
-		// parsed_args_piped = parsed_redirects;
+		parse_redirects(input_string_piped[1], parsed_redirects, parsed_args_piped);
+		parsed_args_piped = parsed_redirects;
 	}
 	else
 	{
 		parse_whitespaces(input_string, parsed_args);
-		// parse_redirects(input_string, parse_redirects, parsed_args);
-		// parsed_args = parsed_redirects;
+		parse_redirects(input_string, parsed_redirects, parsed_args);
+		parsed_args = parsed_redirects;
 	}
 	if (parsed_args[0] != NULL && handle_builtin_commands(parsed_args) == 0)
 		return BUILTIN;
@@ -714,16 +714,29 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 			switch (*c)
 			{
 			case '<':
+				parsed_redirects[argc] = "<";
+				if (new_arg_flag)
+						argc++;
+					else
+						new_arg_flag = 1;
 				separator_ret = strsep(&string2separate, "<");
 				break;
 			case '>':
 				parsed_redirects[argc] = ">";
+				if (new_arg_flag)
+						argc++;
+					else
+						new_arg_flag = 1;
 				separator_ret = strsep(&string2separate, ">");
 				break;
 			case '2':
 				if (*(c + 1) == '>')
 				{
 					parsed_redirects[argc] = "2>";
+					if (new_arg_flag)
+						argc++;
+					else
+						new_arg_flag = 1;
 					separator_ret = strsep(&string2separate, "2>");
 				}
 				break;
