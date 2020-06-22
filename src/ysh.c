@@ -334,7 +334,7 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 {
 	char *input_string_piped[MAX_PIPED_PROGRAMS];
 	int piped = 0;
-	// char **parsed_redirects = malloc(MAX_COMMANDS);
+	// char **parsed_redirects = (char*) malloc(MAX_COMMANDS);
 
 	piped = parse_pipe(input_string, input_string_piped);
 
@@ -343,6 +343,7 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 		parse_whitespaces(input_string_piped[0], parsed_args);
 		// parse_redirects(input_string_piped[0], parse_redirects, parsed_args);
 		// parsed_args = parsed_redirects;
+		
 		parse_whitespaces(input_string_piped[1], parsed_args_piped);
 		// parse_redirects(input_string_piped[1], parse_redirects, parsed_args_piped);
 		// parsed_args_piped = parsed_redirects;
@@ -704,6 +705,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	char *string2separate, *separator_ret = NULL, *redirect_sign = NULL;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
+		printw("arg: %s\n", *arg);
 		string2separate = malloc(strlen(*arg));
 		strcpy(string2separate, *arg);
 		new_arg_flag = 0;
@@ -761,8 +763,8 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 		argc++;
 	}
 	parsed_redirects[argc] = NULL;
-	// handle_redirect(parsed_redirects);
-}
+	handle_redirect(parsed_redirects);
+}				
 
 void handle_redirect(char **parsed_redirects)
 {
@@ -773,6 +775,7 @@ void handle_redirect(char **parsed_redirects)
 	int argc = 0, arg_end = 0;
 	for (; *arg != NULL; arg++)
 	{
+		printw("handle_redirect arg: %s\n", *arg);
 		switch (**arg)
 		{
 		case '<':

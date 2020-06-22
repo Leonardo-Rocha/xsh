@@ -172,4 +172,6 @@ void destroy_shell();
  */
 int handle_file_open(FILE **file_stream, const char *mode, const char *file_name);
 
+/* Process the redirects symbols in order to assign the correct I/0 streams*/
+void handle_redirect(char **parsed_redirects);
 #endif
