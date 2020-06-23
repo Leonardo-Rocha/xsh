@@ -26,6 +26,7 @@
 #define BUFFER_SIZE 200
 
 #define OCTAL 8
+#define DECIMAL 10
 #define HEXADECIMAL 16
 
 #define CTRL_C 03
@@ -195,6 +196,9 @@ void print_help();
 
 /* Print the last 50 commands entered. */
 void print_commands_history();
+
+/* Sends a signal to a pid. */
+void _kill(char **parsed_args);
 
 /* Print all environment variables. */
 void _set();

@@ -650,6 +650,7 @@ command_type handle_builtin_commands(char **parsed_args)
 	switch (current_command)
 	{
 	case BG:
+		// TODO: bg
 		break;
 	case CD:
 		ret = change_dir(parsed_args[1]);
@@ -667,6 +668,7 @@ command_type handle_builtin_commands(char **parsed_args)
 		export(parsed_args + 1);
 		break;
 	case FG:
+		// TODO:fg
 		break;
 	case HELP:
 		print_help();
@@ -675,8 +677,10 @@ command_type handle_builtin_commands(char **parsed_args)
 		print_commands_history();
 		break;
 	case JOBS:
+		//TODO: jobs
 		break;
 	case KILL:
+		_kill(parsed_args + 1);
 		break;
 	case SET:
 		_set();
@@ -944,6 +948,56 @@ void print_commands_history()
 
 	if (output_file != NULL)
 		fclose(output_file);
+}
+
+void _kill(char **parsed_args)
+{
+	char signal_list[] = "1 HUP 2 INT 3 QUIT 4 ILL 5 TRAP 6 ABRT 7 BUS\n"
+											 "8 FPE 9 KILL 10 USR1 11 SEGV 12 USR2 13 PIPE 14\n"
+											 "ALRM 15 TERM 16 STKFLT 17 CHLD 18 CONT 19 STOP 20 TSTP 21\n"
+											 "TTIN 22 TTOU 23 URG 24 XCPU 25 XFSZ 26 VTALRM 27 PROF 28 WINCH\n"
+											 "29 POLL 30 PWR 31 SYS\n";
+	FILE *output_file = NULL;
+	int signal = SIGTERM;
+	int change_signal = 0, error = 0;
+	pid_t pid;
+
+	if (redirection_file_stream.output_stream != NULL &&
+			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+
+	if (parsed_args[0] == NULL)
+		error = 1;
+	else if (parsed_args[0][0] == '-')
+	{
+		if (isdigit(parsed_args[0][1]))
+		{
+			signal = strtol(parsed_args[0], NULL, DECIMAL);
+			change_signal = 1;
+		}
+		else if (parsed_args[0][1] == 'l')
+		{
+			if (output_file == NULL)
+				printw("%s\n", signal_list);
+			else
+				fprintf(output_file, "%s\n", signal_list);
+		}
+	}
+	else if (strcmp(parsed_args[0], "-s") == 0 || strcmp(parsed_args[0], "--signal"))
+	{
+		signal = strtol(parsed_args[1], NULL, DECIMAL);
+		change_signal = 2;
+	}
+	else
+		error = 1;
+
+	if (parsed_args[change_signal] && !error)
+	{
+		pid = strtol(parsed_args[change_signal], NULL, DECIMAL);
+		kill(pid, signal);
+	}
+	else
+		printw("kill: syntax error: missing <pid>");
 }
 
 void _set()
