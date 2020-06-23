@@ -63,6 +63,8 @@ typedef enum
 
 io_stream redirection_file_stream = {NULL};
 
+char version[] = "1.0.0";
+
 char error_buffer[BUFFER_SIZE];
 
 extern int errno;
@@ -78,10 +80,10 @@ int exit_flag = 0;
 int command_number = 0;
 
 /* Initialize ncurses with some specific options and tries to read history from ~/.history */
-void init_shell(const char *_ysh_path);
+void init_shell();
 
 /* Config the variables MYPATH and MYPS1. */
-void config_environment_variables(const char *_ysh_path);
+void config_environment_variables();
 
 /* Print prompt string using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
 void print_primary_prompt_string();

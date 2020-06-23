@@ -1,13 +1,14 @@
 #include "ysh.h"
 
-int main(int argc, char const *argv[])
+int main(int argc, char **argv)
 {
 	char input_string[MAX_COMMAND_LENGTH] = {0}, *parsed_args[MAX_COMMANDS];
 	char *parsed_args_piped[MAX_COMMANDS];
 	int ch, y, x;
 	HIST_ENTRY *history_entry;
+	ysh_path = str_cat_realloc(NULL, argv[0]);
 
-	init_shell(argv[0]);
+	init_shell();
 
 	while (1)
 	{
@@ -72,7 +73,7 @@ int main(int argc, char const *argv[])
 	return 0;
 }
 
-void init_shell(const char *_ysh_path)
+void init_shell()
 {
 	initscr();							// Start curses mode
 	raw();									// Line buffering disabled
@@ -82,10 +83,10 @@ void init_shell(const char *_ysh_path)
 	using_history();
 	// read if there's a history in ~/.history
 	read_history(NULL);
-	config_environment_variables(ysh_path);
+	config_environment_variables();
 }
 
-void config_environment_variables(const char *_ysh_path)
+void config_environment_variables()
 {
 	// $MYPATH
 	char *env_path = getenv("PATH");
@@ -97,18 +98,15 @@ void config_environment_variables(const char *_ysh_path)
 
 	// TODO: FIX THIS
 	// $0 - shell path
-	// ysh_path = malloc(strlen(_ysh_path) * sizeof(char));
-	// strcpy(ysh_path, _ysh_path);
-	// // remove "./"
-	// strsep(&ysh_path, "./");
-	// char *_pwd = getenv("PWD");
-	// char *pwd = malloc(strlen(_pwd));
-	// strcpy(pwd, _pwd);
-	// // concat to get the shell absolute path
-	// strcat(pwd, ysh_path);
-	// // TODO: does this fuck with ysh_path?
-	// ysh_path = pwd;
-	// setenv("0", ysh_path, 1);
+	// remove "."
+	strsep(&ysh_path, ".");
+	char *_pwd = getenv("PWD");
+	char *pwd = str_cat_realloc(NULL, _pwd);
+	// concat to get the shell absolute path
+	pwd = str_cat_realloc(pwd, ysh_path);
+	setenv("0", pwd, 1);
+	free(ysh_path - 1);
+	free(pwd);
 }
 
 void print_primary_prompt_string()
@@ -133,10 +131,10 @@ void print_primary_prompt_string()
 
 char *parse_prompt_string_special_characters(char *string)
 {
-	// TODO: complete cases
 	char *buffer = malloc(BUFFER_SIZE * sizeof(char));
 	char *buffer_start_address = buffer;
 	char *input_string = NULL, **parsed_args = NULL, **parsed_args_piped = NULL;
+	char *_input_string = NULL;
 	uid_t uid;
 	int ret;
 	struct stat *stat_buf = NULL;
@@ -192,8 +190,7 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \l : the basename of the shell's terminal device name
 	case 'l':
-		// TODO: change this from "/bin/bash" to actual ysh absolute path - do we want minor?
-		stat("/bin/bash", stat_buf);
+		stat(getenv("0"), stat_buf);
 		if (stat_buf != NULL)
 			printf("%d", minor(stat_buf->st_dev));
 		break;
@@ -222,9 +219,8 @@ char *parse_prompt_string_special_characters(char *string)
 	// \@ : the current time in 12-hour am/pm format
 	case '@':
 		strftime(buffer, BUFFER_SIZE, "%r", timeinfo);
-		char *hours = strsep(&buffer, ":");
-		char *minutes = strsep(&buffer, ":");
-		printw("%s:%s", hours, minutes);
+		printw("%s:", strsep(&buffer, ":"));
+		printw("%s", strsep(&buffer, ":"));
 		break;
 	// \A : the time, in 24-hour HH:MM format.
 	case 'A':
@@ -238,11 +234,13 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \v : the version of Bash (e.g., 2.00)
 	case 'v':
-		// TODO: print version
+		buffer = str_cat_realloc(NULL, version);
+		printw("%s.", strsep(&buffer, "."));
+		printw("%s", strsep(&buffer, "."));
 		break;
 	// \V : the release of Bash, version + patchlevel (e.g., 2.00.0)
 	case 'V':
-		// TODO: print version + patchlevel
+		printw("%s", version);
 		break;
 	// \w : the current working directory, with $HOME abbreviated with a tilde.
 	case 'w':
@@ -277,9 +275,9 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \[ : begin a sequence of non-printing characters, which could be used to embed a terminal control sequence into the prompt
 	case '[':
-		// TODO: not working
+		// TODO: check behavior
 		string += 2;
-		input_string = calloc(MAX_COMMAND_LENGTH, sizeof(char));
+		_input_string = input_string = calloc(MAX_COMMAND_LENGTH, sizeof(char));
 		// \] : end a sequence of non-printing characters
 		input_string = strsep(&string, "\\]");
 		if (verify_input(input_string) == 0)
@@ -302,16 +300,15 @@ char *parse_prompt_string_special_characters(char *string)
 				printw("%c", decimal);
 			else
 				printf("%c", (int)decimal);
-			string += (str_dif - &string[1]);
+			string += (str_dif - &string[1]) - 1;
 		}
-		string--;
 		break;
 	}
 
 	free(buffer_start_address);
 
-	if (input_string)
-		free(input_string);
+	if (_input_string)
+		free(_input_string);
 	if (parsed_args_piped)
 		free(parsed_args_piped);
 	if (parsed_args)
@@ -359,7 +356,7 @@ int verify_input(char *input_string)
 
 void add_command_to_history(char *input_string)
 {
-	// TODO: do not add buf if it's equal to the previous entry
+	// TODO: do not add if it's equal to the previous entry
 	// history_entry = previous_history();
 	// if (strcmp(buf, history_entry->line) != 0)
 	add_history(input_string);
