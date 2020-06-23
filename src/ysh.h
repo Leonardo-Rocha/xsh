@@ -24,6 +24,9 @@
 
 #define BUFFER_SIZE 200
 
+#define OCTAL 8
+#define HEXADECIMAL 16
+
 typedef enum
 {
   BUILTIN,
@@ -125,6 +128,19 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 /* Parse and expand prompt string special characters. */
 char *parse_prompt_string_special_characters(char *string);
 
+/* 
+ * Parse and consume the \nnn.
+ * Base is 8 or 16.
+ * Return 0 if first char is not a digit.
+ */
+char parse_escape_n_base(char **escape_sequence, int base);
+
+/* 
+ * Internal function to handle parse_escape_n_base call.
+ * Call parse_escape_n_base, checks the ouput and manipulates escape_sequence to rollback the pointer.
+ */
+char _handle_escape_n_base(char **escape_sequence, int base);
+
 int update_arg_count(int *argc, int *new_arg_flag);
 
 void update_IO();
@@ -141,6 +157,9 @@ builtin_command match_builtin_command(char *input);
 int change_dir(char *path);
 
 void _echo(char **message);
+
+/* Parse and convert an escape sequence to a char. */
+char escape_sequence_to_char(char **escape_sequence);
 
 /* 
  * Define or redefine an environment variable.

@@ -290,18 +290,14 @@ char *parse_prompt_string_special_characters(char *string)
 		string--;
 		break;
 	default:
-		// \nnn : the character corresponding to the octal number nnn
-		if (isdigit(string[1]))
-		{
-			char *str_dif;
-			long int decimal = strtol(&string[1], &str_dif, 8);
-			// do not print special characters
-			if (decimal > 31)
-				printw("%c", decimal);
-			else
-				printf("%c", (int)decimal);
-			string += (str_dif - &string[1]) - 1;
-		}
+		// \nnn : the character corresponding to the octal number
+		string++;
+		char c = _handle_escape_n_base(&string, OCTAL);
+		// do not print special characters directly
+		if (c > 31)
+			printw("%c", c);
+		else
+			printf("%c", c);
 		break;
 	}
 
@@ -315,6 +311,33 @@ char *parse_prompt_string_special_characters(char *string)
 		free(parsed_args);
 
 	return ++string;
+}
+
+char parse_escape_n_base(char **escape_sequence, int base)
+{
+	char ret = 0;
+
+	if (isdigit(escape_sequence[0][0]))
+	{
+		char *str_dif;
+		ret = (int)strtol(escape_sequence[0], &str_dif, base);
+		escape_sequence[0] += (str_dif - escape_sequence[0]);
+	}
+
+	return ret;
+}
+
+char _handle_escape_n_base(char **escape_sequence, int base)
+{
+	char ret = 0;
+
+	ret = parse_escape_n_base(escape_sequence, base);
+	if (ret != 0)
+		escape_sequence[0]--;
+	else
+		ret = escape_sequence[0][0];
+
+	return ret;
 }
 
 char *abbreviate_home(char *cwd)
@@ -562,7 +585,6 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
-	// TODO: deal with \n and special characters
 	FILE *output_file = NULL;
 
 	if (redirection_file_stream.output_stream != NULL &&
@@ -586,10 +608,21 @@ void _echo(char **message)
 		// it's a string list
 		for (char **string = message; *string != NULL; string++)
 		{
-			if (output_file == NULL)
-				printw("%s ", *string);
-			else
-				fprintf(output_file, "%s ", *string);
+			for (char *c = *string; *c != '\0'; c++)
+			{
+				char _c = *c;
+				if (*c == '\\')
+				{
+					c++;
+					_c = escape_sequence_to_char(&c);
+				}
+
+				if (output_file == NULL)
+					printw("%c", _c);
+				else
+					fprintf(output_file, "%c", _c);
+			}
+			printw(" ");
 		}
 		printw("\n");
 	}
@@ -598,6 +631,62 @@ void _echo(char **message)
 
 	if (output_file != NULL)
 		fclose(output_file);
+}
+
+char escape_sequence_to_char(char **escape_sequence)
+{
+	char ret;
+
+	switch (escape_sequence[0][0])
+	{
+	case 'a':
+		ret = '\a';
+		break;
+	case 'b':
+		ret = '\b';
+		break;
+	case 'e':
+		ret = '\e';
+		break;
+	case 't':
+		ret = '\t';
+		break;
+	case 'n':
+		ret = '\n';
+		break;
+	case 'v':
+		ret = '\v';
+		break;
+	case 'f':
+		ret = '\f';
+		break;
+	case 'r':
+		ret = '\r';
+		break;
+	case '\\':
+		ret = '\\';
+		break;
+	case '"':
+		ret = '\"';
+		break;
+	case '\'':
+		ret = '\'';
+		break;
+	case '?':
+		ret = '\?';
+		break;
+	case 'x':
+		escape_sequence[0]++;
+		// \xhh
+		ret = _handle_escape_n_base(escape_sequence, HEXADECIMAL);
+		break;
+	default:
+		// \nnn
+		ret = _handle_escape_n_base(escape_sequence, OCTAL);
+		break;
+	}
+
+	return ret;
 }
 
 void export(char **config_args)
