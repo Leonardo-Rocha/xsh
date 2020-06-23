@@ -70,23 +70,37 @@ int main(int argc, char **argv)
 				getyx(stdscr, y, x);
 				// force to stay after prompt_string
 				if (x < x_initial)
+				{
 					move(y, x_initial);
+					clrtoeol();
+				}
 				else
 				{
 					input_string_position--;
-					num_shifts--;
+					shift_input_string(input_string, input_string_position, -1);
+					getyx(stdscr, y, x);
+					printw("%s", &input_string[input_string_position + num_shifts]);
+					move(y, x);
+					num_shifts = 0;
 				}
 				break;
-			case KEY_SUSPEND:
-				// TODO: PUT IN BACKGROUND
+			case CTRL_Z:
+				// TODO: put the foreground process to sleep
+				getyx(stdscr, y, x);
+				mvprintw(y, x_initial, "  ");
+				move(y, x_initial);
 				break;
-			case SIGINT:
+			case CTRL_C:
 				printw("\n");
 				print_primary_prompt_string();
 				break;
 			case CTRL_D:
 				destroy_shell();
 				return 0;
+				break;
+			case CTRL_L:
+				clear();
+				print_primary_prompt_string();
 				break;
 			case '\n':
 				print_primary_prompt_string();
@@ -640,6 +654,9 @@ command_type handle_builtin_commands(char **parsed_args)
 	case CD:
 		ret = change_dir(parsed_args[1]);
 		break;
+	case CLEAR:
+		clear();
+		break;
 	case ECHO:
 		_echo(parsed_args + 1);
 		break;
@@ -882,11 +899,12 @@ void export(char **config_args)
 
 void print_help()
 {
+	// TODO: implement help [command]
 	char print_string[] = "\tYSH General Commands Manual\n\n"
-												"builtin: bg, cd, echo, exit, export, fg, help, history, jobs, kill, set\n"
+												"builtin: bg, cd, clear, echo, exit, export, fg, help, history, jobs, kill, set\n"
 												"run: \n"
 												"	builtin [-options] [args ...]\n"
-												"\nFor more info about each command run helpall\n";
+												"\nFor more info about each command run help [command]\n";
 	if (redirection_file_stream.output_stream == NULL)
 		printw("%s", print_string);
 	else

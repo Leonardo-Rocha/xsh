@@ -13,6 +13,7 @@
 #include <sys/sysmacros.h>
 #include <sys/stat.h>
 #include <readline/history.h>
+#include <signal.h>
 #include <errno.h>
 #include <time.h>
 
@@ -27,7 +28,10 @@
 #define OCTAL 8
 #define HEXADECIMAL 16
 
+#define CTRL_C 03
 #define CTRL_D 04
+#define CTRL_L 12
+#define CTRL_Z 26
 
 typedef enum
 {
@@ -48,6 +52,7 @@ typedef enum
   COMMAND_NOT_FOUND = -1,
   BG,
   CD,
+  CLEAR,
   ECHO,
   EXIT,
   EXPORT,
@@ -78,7 +83,7 @@ extern char **environ;
 
 char *ysh_path;
 
-char *builtin_commands_list[] = {"bg", "cd", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
+char *builtin_commands_list[] = {"bg", "cd", "clear", "echo", "exit", "export", "fg", "help", "history", "jobs", "kill", "set", NULL};
 
 int exit_flag = 0;
 
