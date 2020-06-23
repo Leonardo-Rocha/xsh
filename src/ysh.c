@@ -4,8 +4,9 @@ int main(int argc, char **argv)
 {
 	char input_string[MAX_COMMAND_LENGTH] = {0}, *parsed_args[MAX_COMMANDS];
 	char *parsed_args_piped[MAX_COMMANDS];
-	int ch, y, x;
-	HIST_ENTRY *history_entry;
+	int ch, x_initial, y, x, input_string_position = 0, history_counter = 0;
+	int num_shifts = 0, history_index;
+
 	ysh_path = str_cat_realloc(NULL, argv[0]);
 
 	init_shell();
@@ -13,47 +14,101 @@ int main(int argc, char **argv)
 	while (1)
 	{
 		print_primary_prompt_string();
-
-		ch = getch();
-		// buffer verification for arrow keys and signals
-		// TODO: fix keys not working
-		while (ch == KEY_DOWN || ch == KEY_UP || ch == '\n')
+		getyx(stdscr, y, x_initial);
+		reset_input_string(input_string, &input_string_position);
+		history_counter = 0;
+		num_shifts = 0;
+		do
 		{
-			history_set_pos(history_length - 1);
+			// buffer verification for arrow keys and signals
+			ch = getch();
 			switch (ch)
 			{
 			case KEY_UP:
-				history_entry = previous_history();
-				if (history_entry != NULL)
-					addstr(history_entry->line);
+				history_index = history_length - ++history_counter;
+				getyx(stdscr, y, x);
+				move(y, x_initial);
+				clrtoeol();
+				if (history_index >= 0)
+					update_input_string_with_history(history_index, input_string, &input_string_position);
 				else
-					addstr("");
-				refresh();
+				{
+					reset_input_string(input_string, &input_string_position);
+					history_counter--;
+				}
 				break;
 			case KEY_DOWN:
-				history_entry = next_history();
-				if (history_entry != NULL)
-					addstr(history_entry->line);
+				history_index = history_length - --history_counter;
+				getyx(stdscr, y, x);
+				move(y, x_initial);
+				clrtoeol();
+				if (history_index < history_length)
+					update_input_string_with_history(history_index, input_string, &input_string_position);
 				else
-					addstr("");
-				refresh();
+				{
+					reset_input_string(input_string, &input_string_position);
+					history_counter++;
+				}
+				break;
+			case KEY_LEFT:
+				// shift string only when a character is entered
+				getyx(stdscr, y, x);
+				// force to stay after prompt_string
+				if (x < x_initial)
+					move(y, x_initial);
+				else
+				{
+					input_string_position--;
+					num_shifts++;
+				}
+				break;
+			case KEY_RIGHT:
+				// move cursor right and shift string right
+				// shift string only when a character is entered
+				break;
+			case KEY_BACKSPACE:
+				getyx(stdscr, y, x);
+				// force to stay after prompt_string
+				if (x < x_initial)
+					move(y, x_initial);
+				else
+				{
+					input_string_position--;
+					num_shifts--;
+				}
+				break;
+			case KEY_SUSPEND:
+				// TODO: PUT IN BACKGROUND
+				break;
+			case SIGINT:
+				printw("\n");
+				print_primary_prompt_string();
+				break;
+			case CTRL_D:
+				destroy_shell();
+				return 0;
 				break;
 			case '\n':
 				print_primary_prompt_string();
 				printw("\n");
-				print_primary_prompt_string();
+				break;
 			default:
+				if (num_shifts != 0)
+				{
+					shift_input_string(input_string, input_string_position, num_shifts);
+					getyx(stdscr, y, x);
+					printw("%s", &input_string[input_string_position + num_shifts]);
+					move(y, x);
+					num_shifts = 0;
+				}
+				input_string[input_string_position] = ch;
+				input_string_position++;
 				break;
 			}
-			ch = getch();
-		}
-		refresh();
-		// TODO: change input from getstr to all using getch.
-		ungetch(ch);
-		getyx(stdscr, y, x);
-		move(y, --x);
+			refresh();
+		} while (ch != '\n');
 
-		getstr(input_string);
+		input_string[input_string_position] = '\0';
 
 		if (verify_input(input_string))
 			continue;
@@ -92,11 +147,10 @@ void config_environment_variables()
 	char *env_path = getenv("PATH");
 	setenv("MYPATH", env_path, 1);
 	// $MYPS1
-	char *default_myps1 = "\\u@\\h:\\w \\$ ";
+	char *default_myps1 = "\\u@\\h:\\w\\$ ";
 	if (getenv("MYPS1") == NULL)
 		setenv("MYPS1", default_myps1, 1);
 
-	// TODO: FIX THIS
 	// $0 - shell path
 	// remove "."
 	strsep(&ysh_path, ".");
@@ -367,6 +421,77 @@ char *get_cwd_basename(char *cwd)
 	} while (cwd);
 
 	return temp;
+}
+
+void reset_input_string(char *input_string, int *input_string_position)
+{
+	*input_string_position = 0;
+	input_string[0] = '\0';
+}
+
+void update_input_string_with_history(int history_index, char *input_string, int *input_string_position)
+{
+	HIST_ENTRY *history_entry = history_list()[history_index];
+	int new_length = strlen(history_entry->line);
+
+	printw("%s", history_entry->line);
+
+	strncpy(input_string, history_entry->line, new_length);
+	*input_string_position = new_length;
+}
+
+int shift_input_string(char *input_string, int start_position, int num_shifts)
+{
+	int ret = 0;
+	char *start_address = strchr(input_string, '\0');
+	char *end_address = input_string + start_position - 1;
+	char *next_position;
+	int loop_increment = -1;
+	int swap_multiplier = 1;
+	int nested_loop_limit;
+
+	if (num_shifts < 0)
+	{
+		start_address = input_string + start_position;
+		end_address = strchr(input_string, '\0') + 1;
+		loop_increment = 1;
+		swap_multiplier = -1;
+	}
+
+	nested_loop_limit = num_shifts * swap_multiplier;
+
+	for (char *c = start_address; c != end_address; c += loop_increment)
+	{
+		// printf("current char: %c\n", *c);
+		for (int i = 0; i < nested_loop_limit; i++)
+		{
+			next_position = c + (i + 1) * swap_multiplier;
+			if (is_valid_input_string_position(input_string, next_position))
+			{
+				swap_char(c + i * swap_multiplier, next_position);
+				// printf("\tswap %c with %c\n", *(c+i*swap_multiplier), *(c+(i+1)*swap_multiplier));
+			}
+			else
+				ret = -1;
+		}
+	}
+
+	return ret;
+}
+
+int is_valid_input_string_position(char *string, char *position_address)
+{
+	if ((position_address - string) > MAX_COMMAND_LENGTH || position_address < string)
+		return 0;
+	else
+		return 1;
+}
+
+void swap_char(char *a, char *b)
+{
+	char aux = *a;
+	*a = *b;
+	*b = aux;
 }
 
 int verify_input(char *input_string)

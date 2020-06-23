@@ -27,6 +27,8 @@
 #define OCTAL 8
 #define HEXADECIMAL 16
 
+#define CTRL_D 04
+
 typedef enum
 {
   BUILTIN,
@@ -98,11 +100,27 @@ void print_primary_prompt_string();
 char *abbreviate_home(char *cwd);
 
 /* 
- * Get the basename of the current working directory.
+ * Get the basename of the current working directory with home abbreviated with a tilde.
  * cwd must be passed as a temporary buffer.
  * Return the basename on sucess, otherwise NULL.
  */
 char *get_cwd_basename(char *cwd);
+
+/* Sets input_string_position to 0 and set the string value to '\0'. */
+void reset_input_string(char *input_string, int *input_string_position);
+
+/* Prints the history and history_index and updates input_string and input_string position with the new history line. */
+void update_input_string_with_history(int history_index, char *input_string, int *input_string_position);
+
+/* 
+ * Shift input_string right or left (if num_shifts < 0). 
+ * start_position is the first position to be shifted.
+ */
+int shift_input_string(char *input_string, int start_position, int num_shifts);
+
+int is_valid_input_string_position(char *string, char *position_address);
+
+void swap_char(char *a, char *b);
 
 /* Return 0 if there's a non-null input, -1 otherwise. */
 int verify_input(char *input_string);
