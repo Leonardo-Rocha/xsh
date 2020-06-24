@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 int main(int argc, char const *argv[])
 {
@@ -11,5 +12,6 @@ int main(int argc, char const *argv[])
 
   scanf("%s", string);
   printf("\n%s + b\n ", string);
+  perror("this is an error\n");
   return 0;
 }

@@ -1,4 +1,5 @@
 #include "ysh.h"
+#include <stdio.h>
 
 int main(int argc, char **argv)
 {
@@ -1050,8 +1051,6 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 	char separator;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
-		printw("arg: %s\n", *arg);
-		refresh();
 		string2separate = str_cat_realloc(NULL, *arg);
 
 		new_arg_flag = 0;
@@ -1072,6 +1071,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 				{
 					separator = *c;
 					separator_ret = strsep(&string2separate, "2>");
+					string2separate++;
 				}
 				break;
 			default:
@@ -1084,15 +1084,13 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 				{
 					argc = update_arg_count(&argc, &new_arg_flag);
 					parsed_redirects[argc] = separator_ret;
-					parsed_args[argc]
+					parsed_args[argc] = separator_ret;
 				}
 				redirect_sign = (char *)malloc(2);
 				redirect_sign[0] = separator;
 				redirect_sign[1] = '\0';
-				printw("redirect: %c , %s \n", separator, redirect_sign);
-				refresh();
-				first_redirect = argc < first_redirect ? argc : first_redirect;
 				argc = update_arg_count(&argc, &new_arg_flag);
+				first_redirect = argc < first_redirect ? argc : first_redirect;
 				parsed_redirects[argc] = redirect_sign;
 				c = string2separate;
 			}
@@ -1100,7 +1098,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 		if (strlen(string2separate) > 0)
 		{
 			argc = update_arg_count(&argc, &new_arg_flag);
-			parsed_redirects[argc] = string2separate;
+			parsed_redirects[argc] = str_cat_realloc(NULL, string2separate);
 		}
 		// TODO: free string2separate
 		argc++;
@@ -1130,25 +1128,23 @@ void handle_redirect(char **parsed_redirects)
 	for (; *arg != NULL; arg++)
 	{
 		redirect_file = str_cat_realloc(NULL, current_dir);
-		printw("handle_redirect arg: %s\n", *arg);
-		refresh();
 		switch (**arg)
 		{
 		case '<':
 			redirect_file = str_cat_realloc(redirect_file, *(arg + 1));
 			redirection_file_stream.input_stream = redirect_file;
-			printw("changing stdin to : %s\n", redirect_file);
-			refresh();
 			arg_end += redirect_flag * argc;
 			redirect_flag = 0;
 			break;
 		case '>':
-			redirection_file_stream.output_stream = *(arg + 1);
+			redirect_file = str_cat_realloc(redirect_file, *(arg + 1));
+			redirection_file_stream.output_stream = redirect_file;
 			arg_end += redirect_flag * argc;
 			redirect_flag = 0;
 			break;
 		case '2':
-			redirection_file_stream.error_stream = *(arg + 1);
+			redirect_file = str_cat_realloc(redirect_file, *(arg + 1));
+			redirection_file_stream.error_stream = redirect_file;
 			arg_end += redirect_flag * argc;
 			redirect_flag = 0;
 			break;
@@ -1215,17 +1211,17 @@ void update_IO()
 	if (redirection_file_stream.input_stream != NULL)
 	{
 		handle_file_open(&input_file, "r", redirection_file_stream.input_stream);
-		dup2(fileno(input_file), STDIN_FILENO);
+		dup2(fileno(input_file),  STDIN);
 	}
 	if (redirection_file_stream.output_stream != NULL)
 	{
 		handle_file_open(&output_file, "w+", redirection_file_stream.output_stream);
-		dup2(fileno(output_file), STDOUT_FILENO);
+		dup2(fileno(output_file), STDOUT);
 	}
 	if (redirection_file_stream.error_stream != NULL)
 	{
 		handle_file_open(&err_file, "w+", redirection_file_stream.error_stream);
-		dup2(fileno(err_file), STDERR_FILENO);
+		dup2(fileno(err_file), STDERR);
 	}
 }
 
