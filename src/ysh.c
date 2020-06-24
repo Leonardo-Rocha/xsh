@@ -953,8 +953,8 @@ void print_commands_history()
 void _kill(char **parsed_args)
 {
 	char signal_list[] = "1 HUP 2 INT 3 QUIT 4 ILL 5 TRAP 6 ABRT 7 BUS\n"
-											 "8 FPE 9 KILL 10 USR1 11 SEGV 12 USR2 13 PIPE 14\n"
-											 "ALRM 15 TERM 16 STKFLT 17 CHLD 18 CONT 19 STOP 20 TSTP 21\n"
+											 "8 FPE 9 KILL 10 USR1 11 SEGV 12 USR2 13 PIPE 14 ALRM\n"
+											 "15 TERM 16 STKFLT 17 CHLD 18 CONT 19 STOP 20 TSTP 21\n"
 											 "TTIN 22 TTOU 23 URG 24 XCPU 25 XFSZ 26 VTALRM 27 PROF 28 WINCH\n"
 											 "29 POLL 30 PWR 31 SYS\n";
 	FILE *output_file = NULL;
@@ -966,13 +966,13 @@ void _kill(char **parsed_args)
 			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
 		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
 
-	if (parsed_args[0] == NULL)
+	if (parsed_args[0] == NULL || strlen(parsed_args[0]) == 0)
 		error = 1;
 	else if (parsed_args[0][0] == '-')
 	{
 		if (isdigit(parsed_args[0][1]))
 		{
-			signal = strtol(parsed_args[0], NULL, DECIMAL);
+			signal = strtol(parsed_args[0] + 1, NULL, DECIMAL);
 			change_signal = 1;
 		}
 		else if (parsed_args[0][1] == 'l')
@@ -983,13 +983,11 @@ void _kill(char **parsed_args)
 				fprintf(output_file, "%s\n", signal_list);
 		}
 	}
-	else if (strcmp(parsed_args[0], "-s") == 0 || strcmp(parsed_args[0], "--signal"))
+	else if (strcmp(parsed_args[0], "-s") == 0 || strcmp(parsed_args[0], "--signal") == 0)
 	{
 		signal = strtol(parsed_args[1], NULL, DECIMAL);
 		change_signal = 2;
 	}
-	else
-		error = 1;
 
 	if (parsed_args[change_signal] && !error)
 	{
@@ -997,7 +995,7 @@ void _kill(char **parsed_args)
 		kill(pid, signal);
 	}
 	else
-		printw("kill: syntax error: missing <pid>");
+		printw("kill: syntax error: missing <pid>\n");
 }
 
 void _set()
@@ -1047,7 +1045,7 @@ void _set()
 
 void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args)
 {
-	int argc = 0, new_arg_flag = 0;
+	int argc = 0, new_arg_flag = 0, first_redirect = MAX_REDIRECT_ARGS - 1;
 	char *string2separate, *separator_ret = NULL, *redirect_sign = NULL;
 	char separator;
 	for (char **arg = parsed_args; *arg != NULL; arg++)
@@ -1084,29 +1082,31 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 			{
 				if (strlen(separator_ret) > 0)
 				{
-					parsed_redirects[argc] = separator_ret;
 					argc = update_arg_count(&argc, &new_arg_flag);
+					parsed_redirects[argc] = separator_ret;
+					parsed_args[argc]
 				}
 				redirect_sign = (char *)malloc(2);
 				redirect_sign[0] = separator;
 				redirect_sign[1] = '\0';
-
 				printw("redirect: %c , %s \n", separator, redirect_sign);
 				refresh();
-				parsed_redirects[argc] = redirect_sign;
+				first_redirect = argc < first_redirect ? argc : first_redirect;
 				argc = update_arg_count(&argc, &new_arg_flag);
+				parsed_redirects[argc] = redirect_sign;
 				c = string2separate;
 			}
 		}
 		if (strlen(string2separate) > 0)
 		{
-			parsed_redirects[argc] = string2separate;
 			argc = update_arg_count(&argc, &new_arg_flag);
+			parsed_redirects[argc] = string2separate;
 		}
-		// free(string2separate);
+		// TODO: free string2separate
 		argc++;
 	}
 	parsed_redirects[argc] = NULL;
+	parsed_args[first_redirect] = NULL;
 	handle_redirect(parsed_redirects);
 }
 
