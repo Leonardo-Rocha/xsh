@@ -554,6 +554,9 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 
 	if (piped)
 	{
+		parse_background(&(input_string_piped[0]));
+		parse_background(&(input_string_piped[1]));
+		
 		parse_whitespaces(input_string_piped[0], parsed_args);
 		parse_redirects(input_string_piped[0], parsed_redirects, parsed_args);
 		parsed_args = parsed_redirects;
@@ -564,6 +567,7 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 	}
 	else
 	{
+		parse_background(&input_string);
 		parse_whitespaces(input_string, parsed_args);
 		parse_redirects(input_string, parsed_redirects, parsed_args);
 		parsed_args = parsed_redirects;
@@ -572,6 +576,19 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 		return BUILTIN;
 	else
 		return SIMPLE + piped;
+}
+
+void parse_background(char** input_string)
+{
+	char* string2separete = *input_string;
+	*input_string = strsep(string2separete, "&");
+	if(strlen(string2separete) > 0)
+	{
+		current_context = BACKGROUND;
+		redirection_file_stream.input_stream = NO_FILE;
+	} 
+	else
+		current_context = FOREGROUND;
 }
 
 int parse_pipe(char *input_string, char **input_string_piped)
@@ -712,6 +729,18 @@ builtin_command match_builtin_command(char *input)
 	}
 
 	return COMMAND_NOT_FOUND;
+}
+
+void _bg(char* job_num_arg)
+{
+	int job_num = recent_job;
+	if( job_num_arg != NULL)
+		job_num = strtol(job_num_arg); 
+	if(job_vector[job_num].pid  == 0){
+		printw("bg: no job at %d \n", job_num);
+		return
+	}
+	
 }
 
 int change_dir(char *path)
@@ -1100,7 +1129,6 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 			argc = update_arg_count(&argc, &new_arg_flag);
 			parsed_redirects[argc] = str_cat_realloc(NULL, string2separate);
 		}
-		// TODO: free string2separate
 		argc++;
 	}
 	parsed_redirects[argc] = NULL;
@@ -1122,7 +1150,8 @@ void handle_redirect(char **parsed_redirects)
 	char *redirect_file, *current_dir = str_cat_realloc(NULL, getenv("PWD"));
 	current_dir = str_cat_realloc(current_dir, "/");
 	redirection_file_stream.error_stream = NULL;
-	redirection_file_stream.input_stream = NULL;
+	if(current_context != BACKGROUND)
+		redirection_file_stream.input_stream = NULL;
 	redirection_file_stream.output_stream = NULL;
 	int argc = 0, arg_end = 0, redirect_flag = 0;
 	for (; *arg != NULL; arg++)
@@ -1155,7 +1184,15 @@ void handle_redirect(char **parsed_redirects)
 	}
 	if (arg_end != 0)
 		parsed_redirects[arg_end] = NULL;
+	clean_redirects(parsed_redirects);
 	return;
+}
+
+void clean_redirects(char** parsed_redirects)
+{
+	for(int i = 1; parsed_redirects[i] != NULL; i++)
+		free(parsed_redirects[i]);
+	free(parsed_redirects[0]);
 }
 
 void exec_system_command(char **parsed_args)
@@ -1314,17 +1351,5 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 	return 0;
 }
 
-char *str_cat_realloc(char *destiny, const char *source)
-{
-	size_t destiny_length = destiny ? strlen(destiny) : 0, source_length = strlen(source);
-	size_t new_length = destiny_length + source_length + 1 /* NULL */;
-	char *ret = destiny ? realloc(destiny, new_length) : malloc(new_length);
 
-	if (ret)
-	{
-		memcpy(ret + destiny_length, source, source_length + 1 /* NULL */);
-		ret[destiny_length + source_length] = 0;
-	}
 
-	return ret;
-}

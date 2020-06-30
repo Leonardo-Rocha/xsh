@@ -22,6 +22,7 @@
 #define MAX_PIPED_PROGRAMS 2
 #define MAX_COMMANDS_HISTORY 50
 #define MAX_REDIRECT_ARGS 51
+#define NO_FILE "/dev/null"
 
 #define BUFFER_SIZE 200
 
@@ -33,6 +34,21 @@
 #define CTRL_D 04
 #define CTRL_L 12
 #define CTRL_Z 26
+
+typedef enum
+{
+  RUNNING,
+  STOPPED,
+  TERMINATED,
+  DONE
+}job_state
+
+typedef struct 
+{
+  pid_t job_pid;
+  job_state state;
+  char* command[MAX_COMMANDS];
+}job;
 
 typedef enum
 {
@@ -72,7 +88,19 @@ typedef enum
   STDERR
 } redirections;
 
+typedef enum
+{
+  FOREGROUND,
+  BACKGROUND
+} job_context;
+
 io_stream redirection_file_stream = {NULL};
+
+job_context current_context = FOREGROUND;
+
+job job_vector[MAX_COMMANDS_HISTORY];
+
+int recent_job = 0;
 
 char version[] = "1.0.0";
 
@@ -224,6 +252,9 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped);
 
 /* End ncurses window and dump history to ~/.history */
 void destroy_shell();
+
+/* Free the parsed_redirects vector*/
+void clean_redirects(char** parsed_redirects)
 
 /* Return BUILTIN if it's a builtin command or SIMPLE if it's a system command. */
 command_type handle_builtin_commands(char **parsed_args);
