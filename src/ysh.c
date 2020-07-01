@@ -1,5 +1,4 @@
 #include "ysh.h"
-#include <stdio.h>
 
 int main(int argc, char **argv)
 {
@@ -8,6 +7,7 @@ int main(int argc, char **argv)
 	int ch, x_initial, y, x, input_string_position = 0, history_counter = 0;
 	int num_shifts = 0, history_index;
 
+	output_buffer = malloc(200 * sizeof(char));
 	ysh_path = str_cat_realloc(NULL, argv[0]);
 
 	init_shell();
@@ -55,34 +55,43 @@ int main(int argc, char **argv)
 				// shift string only when a character is entered
 				getyx(stdscr, y, x);
 				// force to stay after prompt_string
-				if (x < x_initial)
+				if (x <= x_initial)
 					move(y, x_initial);
 				else
 				{
+					move(y, x - 1);
 					input_string_position--;
 					num_shifts++;
 				}
 				break;
 			case KEY_RIGHT:
 				// move cursor right and shift string right
-				// shift string only when a character is entered
+				getyx(stdscr, y, x);
+				if (num_shifts > 0)
+				{
+					move(y, x + 1);
+					input_string_position++;
+					num_shifts--;
+				}
 				break;
 			case KEY_BACKSPACE:
 				getyx(stdscr, y, x);
 				// force to stay after prompt_string
-				if (x < x_initial)
+				if (x <= x_initial)
 				{
 					move(y, x_initial);
 					clrtoeol();
+					reset_input_string(input_string, &input_string_position);
 				}
 				else
 				{
+					move(y, x - 1);
 					input_string_position--;
-					shift_input_string(input_string, input_string_position, -1);
+					shift_input_string(input_string, input_string_position, -1 - num_shifts);
 					getyx(stdscr, y, x);
-					printw("%s", &input_string[input_string_position + num_shifts]);
+					move(y, x_initial);
+					printw("%s", input_string);
 					move(y, x);
-					num_shifts = 0;
 				}
 				break;
 			case CTRL_Z:
@@ -98,7 +107,6 @@ int main(int argc, char **argv)
 			case CTRL_D:
 				destroy_shell();
 				return 0;
-				break;
 			case CTRL_L:
 				clear();
 				print_primary_prompt_string();
@@ -107,23 +115,25 @@ int main(int argc, char **argv)
 				print_primary_prompt_string();
 				printw("\n");
 				break;
+			// echo ba  ta
 			default:
-				if (num_shifts != 0)
+				if (isalnum(ch) || '$' || '_' || ' ' || '\t')
 				{
-					shift_input_string(input_string, input_string_position, num_shifts);
+					shift_input_string(input_string, input_string_position, 1);
+
+					input_string[input_string_position] = ch;
+					input_string_position++;
 					getyx(stdscr, y, x);
-					printw("%s", &input_string[input_string_position + num_shifts]);
+					move(y, x_initial);
+					printw("%s", input_string);
 					move(y, x);
-					num_shifts = 0;
 				}
-				input_string[input_string_position] = ch;
-				input_string_position++;
 				break;
 			}
 			refresh();
 		} while (ch != '\n');
 
-		input_string[input_string_position] = '\0';
+		//input_string[input_string_position] = '\0';
 
 		if (verify_input(input_string))
 			continue;
@@ -135,6 +145,7 @@ int main(int argc, char **argv)
 		if (exit_flag)
 			break;
 
+		print_output_buffer();
 		refresh();
 	}
 
@@ -150,6 +161,7 @@ void init_shell()
 	keypad(stdscr, TRUE);		// enables keypad to use the arrow keys to scroll on the process list
 	scrollok(stdscr, TRUE); // enables scroll
 	idlok(stdscr, TRUE);
+	nl();
 	using_history();
 	// read if there's a history in ~/.history
 	read_history(NULL);
@@ -255,7 +267,7 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \j : the number of jobs currently managed by the shell
 	case 'j':
-		// TODO: add this when jobs are done.
+		printw("%d", count_jobs());
 		break;
 	// \l : the basename of the shell's terminal device name
 	case 'l':
@@ -344,7 +356,6 @@ char *parse_prompt_string_special_characters(char *string)
 		break;
 	// \[ : begin a sequence of non-printing characters, which could be used to embed a terminal control sequence into the prompt
 	case '[':
-		// TODO: check behavior
 		string += 2;
 		_input_string = input_string = calloc(MAX_COMMAND_LENGTH, sizeof(char));
 		// \] : end a sequence of non-printing characters
@@ -380,6 +391,19 @@ char *parse_prompt_string_special_characters(char *string)
 		free(parsed_args);
 
 	return ++string;
+}
+
+int count_jobs()
+{
+	int ret = 0;
+
+	for (int i = 0; i <= most_recent_job_index; i++)
+	{
+		if (jobs_list[i].pid != 0)
+			ret++;
+	}
+
+	return ret;
 }
 
 char parse_escape_n_base(char **escape_sequence, int base)
@@ -462,33 +486,35 @@ int shift_input_string(char *input_string, int start_position, int num_shifts)
 	char *end_address = input_string + start_position - 1;
 	char *next_position;
 	int loop_increment = -1;
-	int swap_multiplier = 1;
-	int nested_loop_limit;
-
+	int swap_increment = 1;
+	//printw("shift start addr: %d end addr : %d", *start_address, *end_address);
+	//refresh();
 	if (num_shifts < 0)
 	{
-		start_address = input_string + start_position;
+		//if (num_shifts == -1)
+		//{
+		//	*end_address = '\0';
+		//	return ret;
+		//}
+
+		*(end_address + 1) = '\0';
+		start_address = input_string + start_position + 1;
 		end_address = strchr(input_string, '\0') + 1;
 		loop_increment = 1;
-		swap_multiplier = -1;
+		swap_increment = -1;
 	}
-
-	nested_loop_limit = num_shifts * swap_multiplier;
 
 	for (char *c = start_address; c != end_address; c += loop_increment)
 	{
 		// printf("current char: %c\n", *c);
-		for (int i = 0; i < nested_loop_limit; i++)
+		next_position = c + swap_increment;
+		if (is_valid_input_string_position(input_string, next_position))
 		{
-			next_position = c + (i + 1) * swap_multiplier;
-			if (is_valid_input_string_position(input_string, next_position))
-			{
-				swap_char(c + i * swap_multiplier, next_position);
-				// printf("\tswap %c with %c\n", *(c+i*swap_multiplier), *(c+(i+1)*swap_multiplier));
-			}
-			else
-				ret = -1;
+			swap_char(c, next_position);
+			// printf("\tswap %c with %c\n", *(c+i*swap_multiplier), *(c+(i+1)*swap_multiplier));
 		}
+		else
+			ret = -1;
 	}
 
 	return ret;
@@ -556,21 +582,21 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 	{
 		parse_background(&(input_string_piped[0]));
 		parse_background(&(input_string_piped[1]));
-		
+
 		parse_whitespaces(input_string_piped[0], parsed_args);
 		parse_redirects(input_string_piped[0], parsed_redirects, parsed_args);
-		parsed_args = parsed_redirects;
+		//parsed_args = parsed_redirects;
 
 		parse_whitespaces(input_string_piped[1], parsed_args_piped);
 		parse_redirects(input_string_piped[1], parsed_redirects, parsed_args_piped);
-		parsed_args_piped = parsed_redirects;
+		//parsed_args_piped = parsed_redirects;
 	}
 	else
 	{
 		parse_background(&input_string);
 		parse_whitespaces(input_string, parsed_args);
 		parse_redirects(input_string, parsed_redirects, parsed_args);
-		parsed_args = parsed_redirects;
+		//parsed_args = parsed_redirects;
 	}
 	if (parsed_args[0] != NULL && handle_builtin_commands(parsed_args) == 0)
 		return BUILTIN;
@@ -578,15 +604,17 @@ command_type process_input_string(char *input_string, char **parsed_args, char *
 		return SIMPLE + piped;
 }
 
-void parse_background(char** input_string)
+void parse_background(char **input_string)
 {
-	char* string2separete = *input_string;
-	*input_string = strsep(string2separete, "&");
-	if(strlen(string2separete) > 0)
+	char *string2separate = str_cat_realloc(NULL, *input_string);
+
+	//free(*input_string);
+	*input_string = strsep(&string2separate, "&");
+
+	if (string2separate != NULL)
 	{
 		current_context = BACKGROUND;
-		redirection_file_stream.input_stream = NO_FILE;
-	} 
+	}
 	else
 		current_context = FOREGROUND;
 }
@@ -661,14 +689,13 @@ void parse_whitespaces(char *input_string, char **parsed)
 
 command_type handle_builtin_commands(char **parsed_args)
 {
-	// TODO: complete commands
 	builtin_command current_command = match_builtin_command(parsed_args[0]);
 	int ret = 0;
 
 	switch (current_command)
 	{
 	case BG:
-		// TODO: bg
+		_bg(parsed_args[1]);
 		break;
 	case CD:
 		ret = change_dir(parsed_args[1]);
@@ -695,7 +722,7 @@ command_type handle_builtin_commands(char **parsed_args)
 		print_commands_history();
 		break;
 	case JOBS:
-		//TODO: jobs
+		print_jobs();
 		break;
 	case KILL:
 		_kill(parsed_args + 1);
@@ -711,7 +738,7 @@ command_type handle_builtin_commands(char **parsed_args)
 
 	if (ret == -1)
 	{
-		printw("%s: %s: %s\n", parsed_args[0], strerror(errno), parsed_args[1]);
+		snprintf(output_buffer, BUFFER_SIZE, "%s: %s: %s\n", parsed_args[0], strerror(errno), parsed_args[1]);
 		ret = BUILTIN;
 	}
 
@@ -731,16 +758,23 @@ builtin_command match_builtin_command(char *input)
 	return COMMAND_NOT_FOUND;
 }
 
-void _bg(char* job_num_arg)
+void _bg(char *job2recover)
 {
-	int job_num = recent_job;
-	if( job_num_arg != NULL)
-		job_num = strtol(job_num_arg); 
-	if(job_vector[job_num].pid  == 0){
-		printw("bg: no job at %d \n", job_num);
-		return
+	int job_num = most_recent_job_index;
+
+	if (job2recover != NULL)
+	{
+		strsep(&job2recover, "%%");
+		job_num = strtol(job2recover, NULL, DECIMAL);
 	}
-	
+
+	if (jobs_list[job_num].pid == 0)
+	{
+		snprintf(output_buffer, BUFFER_SIZE, "bg: no job at %d \n", job_num);
+		return;
+	}
+
+	kill(jobs_list[job_num].pid, SIGCONT);
 }
 
 int change_dir(char *path)
@@ -761,23 +795,16 @@ int change_dir(char *path)
 
 void _echo(char **message)
 {
-	FILE *output_file = NULL;
-
-	if (redirection_file_stream.output_stream != NULL &&
-			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
-		printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
-
+	char aux[2];
 	// it's a env variable
 	if (message[0] && message[0][0] == '$')
 	{
 		// +1 to skip '$'
 		char *env_variable = getenv(message[0] + 1);
 		if (env_variable == NULL)
-			printw("echo: environment variable '%s' doesn't exist\n", message[0] + 1);
-		else if (output_file == NULL)
-			printw("%s\n", env_variable);
+			snprintf(output_buffer, BUFFER_SIZE, "echo: environment variable '%s' doesn't exist\n", message[0] + 1);
 		else
-			fprintf(output_file, "%s\n", env_variable);
+			snprintf(output_buffer, BUFFER_SIZE, "%s\n", env_variable);
 	}
 	else if (message[0])
 	{
@@ -792,21 +819,15 @@ void _echo(char **message)
 					c++;
 					_c = escape_sequence_to_char(&c);
 				}
-
-				if (output_file == NULL)
-					printw("%c", _c);
-				else
-					fprintf(output_file, "%c", _c);
+				snprintf(aux, 2, "%c", _c);
+				output_buffer = str_cat_realloc(output_buffer, aux);
 			}
-			printw(" ");
+			output_buffer = str_cat_realloc(output_buffer, " ");
 		}
-		printw("\n");
+		output_buffer = str_cat_realloc(output_buffer, "\n");
 	}
 	else
-		printw("\n");
-
-	if (output_file != NULL)
-		fclose(output_file);
+		output_buffer = str_cat_realloc(output_buffer, "\n");
 }
 
 char escape_sequence_to_char(char **escape_sequence)
@@ -867,14 +888,13 @@ char escape_sequence_to_char(char **escape_sequence)
 
 void export(char **config_args)
 {
-	// TODO: verify if there's redundancy
 	char *env_variable, *append_env_variable, *append_env_variable_value = NULL;
 	char *aux_config_start, *aux_config = NULL;
 	int ret = 0;
 
 	if (config_args[0] == NULL)
 	{
-		printw("Usage: export 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'\n");
+		snprintf(output_buffer, BUFFER_SIZE, "Usage: export 'ENV_VAR'=[$APPEND_VAR:]'NEW_VALUE'\n");
 		return;
 	}
 
@@ -885,7 +905,7 @@ void export(char **config_args)
 	env_variable = strsep(&aux_config, "=");
 
 	if (getenv(env_variable) == NULL)
-		printw("export: environment variable '%s' doesn't exist\n", env_variable);
+		snprintf(output_buffer, BUFFER_SIZE, "export: environment variable '%s' doesn't exist\n", env_variable);
 	else if (aux_config != NULL && aux_config[0] == '$')
 	{
 		append_env_variable = strsep(&aux_config, ":");
@@ -907,10 +927,10 @@ void export(char **config_args)
 			ret = setenv(env_variable, append_env_variable_value, 1);
 		}
 		else
-			printw("export: environment variable '%s' doesn't exist\n", (append_env_variable + 1));
+			snprintf(output_buffer, BUFFER_SIZE, "export: environment variable '%s' doesn't exist\n", (append_env_variable + 1));
 	}
 	else if (aux_config == NULL)
-		printw("export: syntax error: missing '='\n");
+		snprintf(output_buffer, BUFFER_SIZE, "export: syntax error: missing '='\n");
 	else if (strlen(aux_config) > 0)
 		ret = setenv(env_variable, aux_config, 1);
 	// value is a string between double quotes
@@ -920,9 +940,7 @@ void export(char **config_args)
 		ret = setenv(env_variable, "", 1);
 
 	if (ret == -1)
-	{
-		printw("export: setenv error: %s", strerror(errno));
-	}
+		snprintf(output_buffer, BUFFER_SIZE, "export: setenv error: %s", strerror(errno));
 
 	if (aux_config_start)
 		free(aux_config_start);
@@ -939,62 +957,82 @@ void print_help()
 												"run: \n"
 												"	builtin [-options] [args ...]\n"
 												"\nFor more info about each command run help [command]\n";
-	if (redirection_file_stream.output_stream == NULL)
-		printw("%s", print_string);
-	else
-	{
-		FILE *output_file = NULL;
-		if (handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == 0)
-		{
-			fprintf(output_file, "%s", print_string);
-			fclose(output_file);
-		}
-		else
-			printw("help: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
-	}
+
+	snprintf(output_buffer, BUFFER_SIZE, "%s", print_string);
 }
 
 void print_commands_history()
 {
 	register HIST_ENTRY **history;
+	char buffer[MAX_COMMAND_LENGTH + SMALL_STRING_SIZE];
 	history = history_list();
-	FILE *output_file = NULL;
 	int i = history_length > MAX_COMMANDS_HISTORY ? history_length - (MAX_COMMANDS_HISTORY + 1) : 0;
-
-	if (redirection_file_stream.output_stream != NULL &&
-			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
-		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
 
 	if (history != NULL)
 	{
 		for (; history[i]; i++)
 		{
-			if (output_file == NULL)
-				printw("%d %s\n", i, history[i]->line);
-			else
-				fprintf(output_file, "%d %s\n", i, history[i]->line);
+			if (history[i]->line != NULL)
+			{
+				snprintf(buffer, MAX_COMMAND_LENGTH + SMALL_STRING_SIZE, "%d %s\n", i, history[i]->line);
+				output_buffer = str_cat_realloc(output_buffer, buffer);
+			}
+		}
+	}
+}
+
+void print_jobs()
+{
+	char buffer[MAX_COMMAND_LENGTH + 50];
+	char *state = malloc(SMALL_STRING_SIZE * sizeof(char));
+	job _job;
+
+	for (int i = 0; i <= most_recent_job_index; i++)
+	{
+		_job = jobs_list[i];
+		if (_job.pid != 0)
+		{
+			job_state_to_string(_job.state, &state);
+			snprintf(buffer, MAX_COMMAND_LENGTH, "[%d] + %s", i + 1, state);
+			output_buffer = str_cat_realloc(output_buffer, buffer);
+			for (char *arg = *_job.command; arg != NULL; arg++)
+				output_buffer = str_cat_realloc(output_buffer, arg);
 		}
 	}
 
-	if (output_file != NULL)
-		fclose(output_file);
+	free(state);
+}
+
+void job_state_to_string(job_state state, char **string)
+{
+	switch (state)
+	{
+	case RUNNING:
+		snprintf(*string, SMALL_STRING_SIZE, "running");
+		break;
+	case STOPPED:
+		snprintf(*string, SMALL_STRING_SIZE, "stopped");
+		break;
+	case TERMINATED:
+		snprintf(*string, SMALL_STRING_SIZE, "terminated");
+		break;
+	case DONE:
+		snprintf(*string, SMALL_STRING_SIZE, "done");
+		break;
+	}
 }
 
 void _kill(char **parsed_args)
 {
 	char signal_list[] = "1 HUP 2 INT 3 QUIT 4 ILL 5 TRAP 6 ABRT 7 BUS\n"
 											 "8 FPE 9 KILL 10 USR1 11 SEGV 12 USR2 13 PIPE 14 ALRM\n"
-											 "15 TERM 16 STKFLT 17 CHLD 18 CONT 19 STOP 20 TSTP 21\n"
-											 "TTIN 22 TTOU 23 URG 24 XCPU 25 XFSZ 26 VTALRM 27 PROF 28 WINCH\n"
+											 "15 TERM 16 STKFLT 17 CHLD 18 CONT 19 STOP 20 TSTP 21 TTIN \n"
+											 "22 TTOU 23 URG 24 XCPU 25 XFSZ 26 VTALRM 27 PROF 28 WINCH\n"
 											 "29 POLL 30 PWR 31 SYS\n";
-	FILE *output_file = NULL;
 	int signal = SIGTERM;
-	int change_signal = 0, error = 0;
-	pid_t pid;
-
-	if (redirection_file_stream.output_stream != NULL &&
-			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
-		printw("history: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+	int pid_index = 0, error = 0, job_index = 0;
+	char *pid_string;
+	pid_t pid = 0;
 
 	if (parsed_args[0] == NULL || strlen(parsed_args[0]) == 0)
 		error = 1;
@@ -1003,81 +1041,62 @@ void _kill(char **parsed_args)
 		if (isdigit(parsed_args[0][1]))
 		{
 			signal = strtol(parsed_args[0] + 1, NULL, DECIMAL);
-			change_signal = 1;
+			pid_index = 1;
 		}
 		else if (parsed_args[0][1] == 'l')
 		{
-			if (output_file == NULL)
-				printw("%s\n", signal_list);
-			else
-				fprintf(output_file, "%s\n", signal_list);
+			output_buffer = str_cat_realloc(output_buffer, signal_list);
+			return;
+		}
+		else if (strcmp(parsed_args[0], "-s") == 0 || strcmp(parsed_args[0], "--signal") == 0)
+		{
+			signal = strtol(parsed_args[1], NULL, DECIMAL);
+			pid_index = 2;
 		}
 	}
-	else if (strcmp(parsed_args[0], "-s") == 0 || strcmp(parsed_args[0], "--signal") == 0)
-	{
-		signal = strtol(parsed_args[1], NULL, DECIMAL);
-		change_signal = 2;
-	}
+	else
+		error = 1;
 
-	if (parsed_args[change_signal] && !error)
+	if (parsed_args[pid_index] && !error)
 	{
-		pid = strtol(parsed_args[change_signal], NULL, DECIMAL);
+		pid_string = strsep(&parsed_args[pid_index], "%%");
+		if (parsed_args[pid_index] == NULL)
+			pid = strtol(pid_string, NULL, DECIMAL);
+		else
+		{
+			job_index = strtol(parsed_args[pid_index], NULL, DECIMAL);
+			if (job_index <= most_recent_job_index && jobs_list[job_index].pid != 0)
+			{
+				pid = jobs_list[job_index].pid;
+				jobs_list[job_index].pid = 0;
+			}
+			else
+			{
+				snprintf(output_buffer, BUFFER_SIZE, "kill: %%%d: no such job", job_index);
+				return;
+			}
+		}
 		kill(pid, signal);
 	}
 	else
-		printw("kill: syntax error: missing <pid>\n");
+		snprintf(output_buffer, BUFFER_SIZE, "kill: not enough arguments\n");
 }
 
 void _set()
 {
-	FILE *output_file = NULL;
-
-	if (redirection_file_stream.output_stream != NULL &&
-			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
-		printw("set: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
-
 	for (char **variable = environ; *variable != NULL; variable++)
 	{
-		if (output_file == NULL)
-			printw("%s\n", *variable);
-		else
-			fprintf(output_file, "%s\n", *variable);
+		output_buffer = str_cat_realloc(output_buffer, *variable);
+		output_buffer = str_cat_realloc(output_buffer, "\n");
 	}
-
-	if (output_file != NULL)
-		fclose(output_file);
 }
-
-// void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error)
-// {
-// 	char* file = (char *) input_sequence[0];
-// 	pid_t pid = fork();
-// 	if(pid = 0)
-// 		return;
-// 	else if(pid = -1)
-// 		// TODO: FORK ERROR HANDLING
-// 		return;
-// 	// stdout and stderr redirection
-// 	if(exec_input != NULL)
-// 		freopen(exec_input, "r", stdin);
-// 	else
-// 		freopen(BACKGROUND_IN, "r", stdin);
-// 	if(exec_output != NULL)
-// 		freopen(exec_output, "w", stdout);
-// 	else
-// 		freopen(BACKGROUND_OUT, "r", stdout);
-// 	if(exec_error != NULL)
-// 		reopen(exec_error, "w", stderr);
-// 	else
-// 		freopen(BACKGROUND_ERROR, "r", stderr);
-// 	execvp(file, input_sequence);
-// }
 
 void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_args)
 {
 	int argc = 0, new_arg_flag = 0, first_redirect = MAX_REDIRECT_ARGS - 1;
 	char *string2separate, *separator_ret = NULL, *redirect_sign = NULL;
 	char separator;
+
 	for (char **arg = parsed_args; *arg != NULL; arg++)
 	{
 		string2separate = str_cat_realloc(NULL, *arg);
@@ -1102,8 +1121,11 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 					separator_ret = strsep(&string2separate, "2>");
 					string2separate++;
 				}
+				else
+					separator_ret = NULL;
 				break;
 			default:
+
 				separator_ret = NULL;
 				break;
 			}
@@ -1113,7 +1135,8 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 				{
 					argc = update_arg_count(&argc, &new_arg_flag);
 					parsed_redirects[argc] = separator_ret;
-					parsed_args[argc] = separator_ret;
+					if (argc < first_redirect)
+						parsed_args[argc] = separator_ret;
 				}
 				redirect_sign = (char *)malloc(2);
 				redirect_sign[0] = separator;
@@ -1131,6 +1154,7 @@ void parse_redirects(char *input_string, char **parsed_redirects, char **parsed_
 		}
 		argc++;
 	}
+
 	parsed_redirects[argc] = NULL;
 	parsed_args[first_redirect] = NULL;
 	handle_redirect(parsed_redirects);
@@ -1144,16 +1168,19 @@ int update_arg_count(int *argc, int *new_arg_flag)
 		*new_arg_flag = 1;
 	return *argc;
 }
+
 void handle_redirect(char **parsed_redirects)
 {
 	char **arg = parsed_redirects;
 	char *redirect_file, *current_dir = str_cat_realloc(NULL, getenv("PWD"));
+	int argc = 0, arg_end = 0, redirect_flag = 0;
+
 	current_dir = str_cat_realloc(current_dir, "/");
 	redirection_file_stream.error_stream = NULL;
-	if(current_context != BACKGROUND)
-		redirection_file_stream.input_stream = NULL;
+
+	redirection_file_stream.input_stream = NULL;
+	redirection_file_stream.input_stream = NULL;
 	redirection_file_stream.output_stream = NULL;
-	int argc = 0, arg_end = 0, redirect_flag = 0;
 	for (; *arg != NULL; arg++)
 	{
 		redirect_file = str_cat_realloc(NULL, current_dir);
@@ -1184,13 +1211,13 @@ void handle_redirect(char **parsed_redirects)
 	}
 	if (arg_end != 0)
 		parsed_redirects[arg_end] = NULL;
-	clean_redirects(parsed_redirects);
+	//clean_redirects(parsed_redirects);
 	return;
 }
 
-void clean_redirects(char** parsed_redirects)
+void clean_redirects(char **parsed_redirects)
 {
-	for(int i = 1; parsed_redirects[i] != NULL; i++)
+	for (int i = 1; parsed_redirects[i] != NULL; i++)
 		free(parsed_redirects[i]);
 	free(parsed_redirects[0]);
 }
@@ -1202,7 +1229,7 @@ void exec_system_command(char **parsed_args)
 
 	if (pid == -1)
 	{
-		printw("ysh: Failed to fork: %s\n", strerror(errno));
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: Failed to fork: %s\n", strerror(errno));
 		return;
 	}
 	else if (pid == 0)
@@ -1213,11 +1240,33 @@ void exec_system_command(char **parsed_args)
 	else
 	{
 		// waiting for child to terminate
-		wait(NULL);
+		if (current_context == FOREGROUND)
+			wait(NULL);
+		else
+			job_list_append(pid, parsed_args);
+		raw();
 		fflush(stdout);
 	}
 
 	return;
+}
+
+void job_list_append(pid_t pid, char **parsed_args)
+{
+	jobs_list[++most_recent_job_index].pid = pid;
+	copy_args(jobs_list[most_recent_job_index].command, parsed_args);
+	jobs_list[most_recent_job_index].state = RUNNING;
+}
+
+void copy_args(char **list_dest, char **list_src)
+{
+	char *list_src_iterator = *list_src;
+	for (; list_src_iterator != NULL; list_src_iterator++)
+	{
+		*list_dest = str_cat_realloc(NULL, list_src_iterator);
+		list_dest++;
+	}
+	*list_dest = NULL;
 }
 
 int exec_mypath(const char *file, char *const argv[])
@@ -1230,11 +1279,12 @@ int exec_mypath(const char *file, char *const argv[])
 		sprintf(mypathenv, "MYPATH=%s", mypath);
 		char *envp[] = {mypathenv, NULL};
 		update_IO();
+		//noraw();
 		ret = execvpe(file, argv, envp);
 	}
 	else
 	{
-		printw("ysh: MYPATH env variable doesn't exist.\n");
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: MYPATH env variable doesn't exist.\n");
 		ret = -1;
 	}
 
@@ -1248,13 +1298,20 @@ void update_IO()
 	if (redirection_file_stream.input_stream != NULL)
 	{
 		handle_file_open(&input_file, "r", redirection_file_stream.input_stream);
-		dup2(fileno(input_file),  STDIN);
+		dup2(fileno(input_file), STDIN);
 	}
+	else if (current_context == BACKGROUND)
+	{
+		input_file = fdopen(STDIN, "r");
+		fclose(input_file);
+	}
+
 	if (redirection_file_stream.output_stream != NULL)
 	{
 		handle_file_open(&output_file, "w+", redirection_file_stream.output_stream);
 		dup2(fileno(output_file), STDOUT);
 	}
+
 	if (redirection_file_stream.error_stream != NULL)
 	{
 		handle_file_open(&err_file, "w+", redirection_file_stream.error_stream);
@@ -1264,11 +1321,10 @@ void update_IO()
 
 void handle_exec_error(char *command)
 {
-	// TODO: command not found error being added to the history
 	if (errno = ENOENT)
-		printw("ysh: command not found: %s\n", command);
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: command not found: %s\n", command);
 	else
-		printw("ysh: Failed to exec command: %s: ", strerror(errno));
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: Failed to exec command: %s: ", strerror(errno));
 	refresh();
 	exit(EXIT_FAILURE);
 }
@@ -1280,13 +1336,13 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 
 	if (pipe(pipe_fd) < 0)
 	{
-		printw("ysh: Pipe could not be initialized: %s", strerror(errno));
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: Pipe could not be initialized: %s", strerror(errno));
 		return;
 	}
 	p1 = fork();
 	if (p1 < 0)
 	{
-		printw("ysh: Failed to fork: %s\n", strerror(errno));
+		snprintf(output_buffer, BUFFER_SIZE, "ysh: Failed to fork: %s\n", strerror(errno));
 		return;
 	}
 
@@ -1303,11 +1359,14 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 	else
 	{
 		// Parent executing
+		if (current_context == BACKGROUND)
+			job_list_append(p1, parsed_args);
+
 		p2 = fork();
 
 		if (p2 < 0)
 		{
-			printw("ysh: Failed to fork: %s\n", strerror(errno));
+			snprintf(output_buffer, BUFFER_SIZE, "ysh: Failed to fork: %s\n", strerror(errno));
 			return;
 		}
 
@@ -1323,10 +1382,33 @@ void exec_system_command_piped(char **parsed_args, char **parsed_args_piped)
 		else
 		{
 			// parent executing, waiting for two children
+			if (current_context == BACKGROUND)
+				job_list_append(p2, parsed_args_piped);
+
 			wait(NULL);
 			wait(NULL);
+			raw();
 		}
 	}
+}
+
+void print_output_buffer()
+{
+	FILE *output_file = NULL;
+
+	if (redirection_file_stream.output_stream != NULL &&
+			handle_file_open(&output_file, "w+", redirection_file_stream.output_stream) == -1)
+		printw("echo: failed to redirect output to file '%s': %s", redirection_file_stream.output_stream, strerror(errno));
+
+	if (output_file == NULL)
+		printw("%s", output_buffer);
+	else
+		fprintf(output_file, "%s", output_buffer);
+
+	if (output_file != NULL)
+		fclose(output_file);
+
+	output_buffer[0] = 0;
 }
 
 void destroy_shell()
@@ -1334,6 +1416,7 @@ void destroy_shell()
 	// dumps the current history to the file ~/.history
 	write_history(NULL);
 	endwin(); /* End curses mode		  */
+	free(output_buffer);
 }
 
 int handle_file_open(FILE **file_stream, const char *mode, const char *file_name)
@@ -1351,5 +1434,17 @@ int handle_file_open(FILE **file_stream, const char *mode, const char *file_name
 	return 0;
 }
 
+char *str_cat_realloc(char *destiny, const char *source)
+{
+	size_t destiny_length = destiny ? strlen(destiny) : 0, source_length = strlen(source);
+	size_t new_length = destiny_length + source_length + 1 /* NULL */;
+	char *ret = destiny ? realloc(destiny, new_length) : malloc(new_length);
 
+	if (ret)
+	{
+		memcpy(ret + destiny_length, source, source_length + 1 /* NULL */);
+		ret[destiny_length + source_length] = 0;
+	}
 
+	return ret;
+}

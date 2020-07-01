@@ -16,6 +16,8 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
+// #define _MISC_SOURCE
+// #include <termios.h>
 
 #define MAX_COMMANDS 51
 #define MAX_COMMAND_LENGTH 1000
@@ -24,6 +26,7 @@
 #define MAX_REDIRECT_ARGS 51
 #define NO_FILE "/dev/null"
 
+#define SMALL_STRING_SIZE 20
 #define BUFFER_SIZE 200
 
 #define OCTAL 8
@@ -41,14 +44,14 @@ typedef enum
   STOPPED,
   TERMINATED,
   DONE
-}job_state
+} job_state;
 
-typedef struct 
+typedef struct
 {
-  pid_t job_pid;
+  pid_t pid;
   job_state state;
-  char* command[MAX_COMMANDS];
-}job;
+  char **command;
+} job;
 
 typedef enum
 {
@@ -98,13 +101,13 @@ io_stream redirection_file_stream = {NULL};
 
 job_context current_context = FOREGROUND;
 
-job job_vector[MAX_COMMANDS_HISTORY];
+job jobs_list[MAX_COMMANDS_HISTORY];
 
-int recent_job = 0;
+int most_recent_job_index = 0;
 
 char version[] = "1.0.0";
 
-char error_buffer[BUFFER_SIZE];
+char *output_buffer;
 
 extern int errno;
 
@@ -126,6 +129,9 @@ void config_environment_variables();
 
 /* Print prompt string using the environment variable 'MYPS1'. By default is user@hostname: cwd $ */
 void print_primary_prompt_string();
+
+/* The number of jobs currently managed by the shell. */
+int count_jobs();
 
 /* 
  * Abbreviate $HOME with a tilde.
@@ -165,6 +171,8 @@ void add_command_to_history(char *input_string);
 /* Return the command_type enum. */
 command_type process_input_string(char *input_string, char **parsed_args, char **parsed_args_piped);
 
+void parse_background(char **input_string);
+
 /* 
  * Parse the input looking for the pipe delimiter '|'. 
  * Return 0 if no pipe is found, 1 otherwise. 
@@ -202,6 +210,8 @@ void update_IO();
  */
 builtin_command match_builtin_command(char *input);
 
+void _bg(char *job2recover);
+
 /* 
  * Change the working directory and PWD environment variable. 
  * Return zero on sucess, -1 on error and errno is set to indicate the error. 
@@ -225,16 +235,16 @@ void print_help();
 /* Print the last 50 commands entered. */
 void print_commands_history();
 
+/* Print jobs list. */
+void print_jobs();
+
+void job_state_to_string(job_state state, char **string);
+
 /* Sends a signal to a pid. */
 void _kill(char **parsed_args);
 
 /* Print all environment variables. */
 void _set();
-
-// void run_foreground(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
-
-// void run_background(const char* input_sequence[], char* exec_input, char* exec_output, char* exec_error);
-
 /* 
  * Parse the input_string and exec the control sequence.
  * parsed_args and parsed_args_piped are buffers to store the parsed sequence.
@@ -250,11 +260,19 @@ int exec_mypath(const char *file, char *const argv[]);
 
 void exec_system_command_piped(char **parsed_args, char **parsed_args_piped);
 
+void job_list_append(pid_t pid, char **parsed_args);
+
+/* Prints the output buffer to stdscr or to the redirect file if it's not null. */
+void print_output_buffer();
+
 /* End ncurses window and dump history to ~/.history */
 void destroy_shell();
 
 /* Free the parsed_redirects vector*/
-void clean_redirects(char** parsed_redirects)
+void clean_redirects(char **parsed_redirects);
+
+/* Copy args from list_src to list_dest*/
+void copy_args(char **list_dest, char **list_src);
 
 /* Return BUILTIN if it's a builtin command or SIMPLE if it's a system command. */
 command_type handle_builtin_commands(char **parsed_args);

@@ -11,7 +11,7 @@ int main(int argc, char const *argv[])
   // FILE *out_file = fopen("output", "w+");
 
   scanf("%s", string);
-  printf("\n%s + b\n ", string);
-  perror("this is an error\n");
+  printf("\r\n%s + b\r\n ", string);
+  perror("this is an error\r\n");
   return 0;
 }

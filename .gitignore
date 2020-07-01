@@ -53,3 +53,7 @@ dkms.conf
 
 # compiled files
 /build
+
+# debug files
+out.txt
+.vscode/settings.json
